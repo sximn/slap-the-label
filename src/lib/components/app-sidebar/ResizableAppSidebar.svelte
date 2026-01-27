@@ -6,12 +6,12 @@
   import { getContentPaneContext } from '$lib/context/contentPaneContext.svelte';
   import type { Snippet } from 'svelte';
   import LightSwitch from '$lib/components/ui/light-switch/light-switch.svelte';
-  import NavUser from './NavUser.svelte';
   import HistoryPanel from './history/HistoryPanel.svelte';
   import * as Tabs from '$lib/components/ui/tabs';
-  import { PanelRightClose, PanelRightOpen, History, Settings2 } from '@lucide/svelte';
+  import { PanelRightClose, PanelRightOpen, History, Settings2, Trash2 } from '@lucide/svelte';
   import { cmdOrCtrl } from '$lib/hooks/is-mac.svelte';
   import DisplaySettingsPanel from './DisplaySettingsPanel.svelte';
+  import { Button } from '../ui/button';
 
   const INITIAL_OPEN = true;
   const MIN_PIXEL_SIZE = 220;
@@ -123,8 +123,6 @@
         style="min-width: {MIN_PIXEL_SIZE}px;"
         side="left"
       >
-        <button onclick={handleClear}>Clear</button>
-
         <Sidebar.Content class="mx-auto w-full max-w-[24rem] rounded-lg border border-border">
           <Tabs.Root value="history" class="flex h-full flex-col">
             <div class="px-2 pt-2">
@@ -149,14 +147,13 @@
         </Sidebar.Content>
 
         <Sidebar.Footer>
-          <Sidebar.Separator />
-          <Sidebar.Group>
+          <Sidebar.Group class="items- w-full flex-row justify-end gap-2">
+            <Button onclick={handleClear} variant="outline">
+              <Trash2 />
+              Clear Pane
+            </Button>
             <LightSwitch />
           </Sidebar.Group>
-
-          <Sidebar.Separator />
-
-          <NavUser user={{ name: 'aa', email: 'my@mail.com', avatar: '/favicon.svg' }} />
         </Sidebar.Footer>
 
         <Sidebar.Rail />
