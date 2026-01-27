@@ -123,7 +123,7 @@
         style="min-width: {MIN_PIXEL_SIZE}px;"
         side="left"
       >
-        <Sidebar.Content class="mx-auto w-full max-w-[24rem] rounded-lg border border-border">
+        <Sidebar.Content class="mx-auto mt-4 w-full max-w-[24rem] rounded-sm border border-border">
           <Tabs.Root value="history" class="flex h-full flex-col">
             <div class="px-2 pt-2">
               <Tabs.List class="grid w-full grid-cols-2">
