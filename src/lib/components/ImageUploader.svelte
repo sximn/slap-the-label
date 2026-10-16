@@ -27,7 +27,7 @@
 
     try {
       const imageData = await loadImage(file);
-      ctx.setImage(imageData, file.name);
+      ctx.setImage(imageData.imageData, file.name);
     } catch (error) {
       alert('Failed to load image: ' + (error as Error).message);
     }
