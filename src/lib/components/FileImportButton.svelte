@@ -5,7 +5,7 @@
   import { Upload } from '@lucide/svelte';
 
   let {
-    label = 'Import',
+    label = 'Upload',
     class: className,
     ...restProps
   }: ButtonProps & { label?: string } = $props();

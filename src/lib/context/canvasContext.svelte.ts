@@ -199,6 +199,47 @@ export function createCanvasContext() {
     }
   }
 
+  function getImportRoleError(importId: number, role: ImportRole): string | undefined {
+    const index = history.findIndex((entry) => entry.timestamp === importId);
+    const entry = history[index];
+    if (entry?.type !== 'import') return 'This history step is not an import.';
+    if (isImporting) return 'Wait for the current import to finish.';
+    if (index > historyIndex) return 'Redo this history step before changing its interpretation.';
+
+    // Compatibility depends on the image at this import, not the currently visible image.
+    // Resolve only that image, without mutating the document while the menu is rendering.
+    let precedingImage = historyBaseline.imageData;
+    const overrides = roleOverrides();
+    for (let i = 0; i < index; i++) {
+      const previous = history[i];
+      if (previous.type === 'image') precedingImage = previous.payload.data;
+      else if (previous.type === 'clear') precedingImage = null;
+      else if (
+        previous.type === 'raster-preview' &&
+        previous.payload.target === 'image' &&
+        precedingImage?.raster === previous.payload.data.raster
+      ) {
+        precedingImage = previous.payload.data;
+      } else if (previous.type === 'import') {
+        try {
+          const transition = getImportTransition(
+            previous.payload.source,
+            overrides.get(previous.timestamp) ?? previous.payload.role,
+            precedingImage,
+          );
+          if (transition.type === 'image') precedingImage = transition.payload.data;
+        } catch {
+          // Failed imports leave the preceding image unchanged, just as during replay.
+        }
+      }
+    }
+    try {
+      getImportTransition(entry.payload.source, role, precedingImage);
+    } catch (reason) {
+      return reason instanceof Error ? reason.message : String(reason);
+    }
+  }
+
   const context = {
     get importErrors() {
       return importErrors;
@@ -240,29 +281,12 @@ export function createCanvasContext() {
     getHistoryError(id: number): string | undefined {
       return roleErrors[id] ?? historyErrors[id];
     },
+    getImportRoleError,
     changeImportRole(importId: number, role: ImportRole) {
       const index = history.findIndex((entry) => entry.timestamp === importId);
       const entry = history[index];
       if (entry?.type !== 'import') return;
-      if (isImporting || index > historyIndex) {
-        roleErrors[importId] =
-          'Finish the current import and redo this history step before changing its role.';
-        return;
-      }
-      const current = captureDocument();
-      let error: string | undefined;
-      const existingErrors = { ...historyErrors };
-      try {
-        restoreDocument(historyBaseline);
-        const overrides = roleOverrides();
-        for (let i = 0; i < index; i++) applyEntry(history[i], overrides);
-        getImportTransition(entry.payload.source, role, imageData);
-      } catch (reason) {
-        error = reason instanceof Error ? reason.message : String(reason);
-      } finally {
-        restoreDocument(current);
-        historyErrors = existingErrors;
-      }
+      const error = getImportRoleError(importId, role);
       if (error) {
         roleErrors[importId] = error;
         return;

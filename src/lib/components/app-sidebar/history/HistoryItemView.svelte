@@ -14,11 +14,14 @@
     EyeOff,
     Eraser,
     Circle,
+    CircleAlert,
+    type Icon as IconType,
   } from '@lucide/svelte';
   import { slide, scale } from 'svelte/transition';
   import { backOut, cubicOut, linear } from 'svelte/easing';
   import type { Attachment } from 'svelte/attachments';
-  import { isImportRole } from '$lib/utils/files/loader';
+  import ImportRolePopover from './ImportRolePopover.svelte';
+  import * as Tooltip from '$lib/components/ui/tooltip';
 
   interface Props {
     historyEntry: HistoryEntry;
@@ -46,7 +49,7 @@
 
   const ctx = getCanvasContext();
 
-  const TYPE_ICONS: Record<HistoryActionType | 'default', typeof ImageIcon> = {
+  const TYPE_ICONS: Record<HistoryActionType | 'default', typeof IconType> = {
     import: ImageIcon,
     'import-role': ScanFace,
     image: ImageIcon,
@@ -79,7 +82,7 @@
   {@attach refAttachment}
   data-history-index={index}
 >
-  <button
+  <div
     class={cn(
       'group flex w-full items-stretch gap-2 rounded-md py-0 pr-2 text-left text-sm transition-colors',
       'hover:bg-accent/50',
@@ -87,13 +90,15 @@
       isDragging && 'opacity-0', // Hide original when dragging
       isOverlay && 'bg-background opacity-100 shadow-lg ring-1 ring-border', // Show overlay with style
     )}
-    onclick={() => !isDragging && ctx.jumpTo(index)}
-    type="button"
-    aria-label="History item"
-    aria-disabled={isDragging}
-    tabindex="-1"
   >
-    <div class="relative flex w-8 shrink-0 flex-col items-center">
+    <button
+      class="relative flex w-8 shrink-0 flex-col items-center"
+      onclick={() => !isDragging && ctx.jumpTo(index)}
+      type="button"
+      aria-label="History item"
+      aria-disabled={isDragging}
+      tabindex="-1"
+    >
       {#if !isFirst && !isFuture}
         <div
           class="absolute top-0 h-1/2 w-px bg-muted-foreground/20 dark:bg-muted-foreground/40"
@@ -120,42 +125,42 @@
         )}
         in:scale={{ duration: 300, delay: 150, easing: cubicOut, start: 0 }}
       ></div>
-    </div>
+    </button>
 
     <div
       class={cn(
-        'flex min-w-0 items-center gap-2 py-2',
+        'flex min-w-0 flex-1 items-center gap-1',
         isFuture && 'opacity-50 grayscale transition-opacity duration-300',
       )}
     >
-      <Icon class="size-4 shrink-0 text-muted-foreground/70" />
-      <span class="truncate">{historyEntry.label}</span>
+      {#if historyEntry.type === 'import' && !isOverlay}
+        <ImportRolePopover
+          importId={historyEntry.timestamp}
+          name={historyEntry.payload.source.name}
+          icon={Icon}
+          disabled={isDragging}
+        />
+      {:else}
+        <span class="flex size-7 shrink-0 items-center justify-center">
+          <Icon class="size-4 text-muted-foreground/70" />
+        </span>
+      {/if}
+      <button
+        class="min-w-0 flex-1 truncate py-2 text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
+        onclick={() => !isDragging && ctx.jumpTo(index)}
+        type="button"
+        aria-label={`Go to history step: ${historyEntry.label}`}
+        aria-disabled={isDragging}
+        tabindex="-1">{historyEntry.label}</button
+      >
     </div>
-  </button>
-  {#if historyEntry.type === 'import' && !isOverlay}
-    <div class="mb-2 ml-8 space-y-1 pr-2">
-      <label class="flex items-center gap-2 text-xs text-muted-foreground">
-        Treat as
-        <select
-          class="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-foreground"
-          aria-label={`Interpret ${historyEntry.payload.source.name} as`}
-          value={importRole}
-          disabled={isFuture || isDragging || ctx.isImporting}
-          onpointerdown={(event) => event.stopPropagation()}
-          onchange={(event) => {
-            const value = event.currentTarget.value;
-            if (isImportRole(value)) ctx.changeImportRole(historyEntry.timestamp, value);
-            event.currentTarget.value = ctx.getImportRole(historyEntry.timestamp) ?? '';
-          }}
-        >
-          <option value="image">Image</option>
-          <option value="mask">Mask</option>
-          <option value="annotation">Annotation</option>
-        </select>
-      </label>
-    </div>
-  {/if}
-  {#if error && !isOverlay}
-    <p class="mb-2 ml-8 pr-2 text-xs break-words text-destructive" role="alert">{error}</p>
-  {/if}
+    {#if error && historyEntry.type !== 'import' && !isOverlay}
+      <Tooltip.Root>
+        <Tooltip.Trigger aria-label={error} class="self-center text-destructive">
+          <CircleAlert class="size-4" />
+        </Tooltip.Trigger>
+        <Tooltip.Content side="left">{error}</Tooltip.Content>
+      </Tooltip.Root>
+    {/if}
+  </div>
 </div>

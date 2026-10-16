@@ -338,6 +338,45 @@ test('the first image cannot be reinterpreted as a mask without a preceding imag
   expect(context.imageFileName).toBe('mask.png');
 });
 
+test('role availability uses the original history position without mutating the current document', async () => {
+  const context = documentWithOverlays();
+  await context.importFiles([rasterFile]);
+  const id = context.history.at(-1)!.timestamp;
+  context.setImage(image(50), 'later.png');
+  const currentImage = context.imageData;
+  const annotations = context.annotationFiles;
+  const historyLength = context.history.length;
+
+  expect(context.getImportRoleError(id, 'mask')).toBeUndefined();
+  expect(context.getImportRoleError(id, 'image')).toBeUndefined();
+  expect(context.getImportRoleError(id, 'annotation')).toContain('raster pixels');
+  expect(context.imageData).toBe(currentImage);
+  expect(context.annotationFiles).toBe(annotations);
+  expect(context.history).toHaveLength(historyLength);
+
+  context.jumpTo(2);
+  expect(context.getImportRoleError(id, 'mask')).toContain('Redo this history step');
+});
+
+test('role availability respects a cleared-history baseline and later clears', async () => {
+  const context = documentWithOverlays();
+  context.clearHistory();
+  await context.importFiles([rasterFile]);
+  const firstId = context.history.at(-1)!.timestamp;
+  expect(context.getImportRoleError(firstId, 'mask')).toBeUndefined();
+  decode.mockResolvedValueOnce({ imageData: image(50) });
+  await context.importFiles([new File(['image'], 'smaller.png')]);
+  const secondId = context.history.at(-1)!.timestamp;
+  expect(context.getImportRoleError(secondId, 'mask')).toContain('100×100');
+
+  context.changeImportRole(secondId, 'image');
+  context.clearAll();
+  await context.importFiles([rasterFile]);
+  expect(context.getImportRoleError(context.history.at(-1)!.timestamp, 'mask')).toContain(
+    'Add an image',
+  );
+});
+
 test('one automatic batch can load an image, mask, and annotations with unique history identities', async () => {
   const context = createContext();
   const clock = vi.spyOn(Date, 'now').mockReturnValue(100);
