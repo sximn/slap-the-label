@@ -5,14 +5,18 @@ import type {
   AnnotationFile,
   DisplaySettings,
   ImageCoordinateSpace,
+  RasterTarget,
+  RasterPreviewSettings,
 } from '$lib/types';
 import { SvelteMap } from 'svelte/reactivity';
+import { withRasterPreview } from '$lib/utils/rasterPreview';
 
 const CONTEXT_KEY = Symbol('CANVAS');
 
 export type HistoryActionPayload =
   | { type: 'image'; payload: { data: ImageData; name: string } }
   | { type: 'mask'; payload: { data: ImageData } }
+  | { type: 'raster-preview'; payload: { target: RasterTarget; data: ImageData } }
   | {
       type: 'annotation';
       payload: { action: 'add'; file: AnnotationFile } | { action: 'remove'; name: string };
@@ -93,6 +97,11 @@ export function createCanvasContext() {
 
       case 'mask':
         maskData = action.payload.data;
+        break;
+
+      case 'raster-preview':
+        if (action.payload.target === 'image') imageData = action.payload.data;
+        else maskData = action.payload.data;
         break;
 
       case 'annotation': {
@@ -246,6 +255,16 @@ export function createCanvasContext() {
 
     setMask(data: ImageData) {
       this.addToHistory('mask', 'Load Mask', { data });
+    },
+
+    setRasterPreview(target: RasterTarget, settings: RasterPreviewSettings) {
+      const data = target === 'image' ? imageData : maskData;
+      if (!data?.raster) return;
+      const preview = withRasterPreview(data, settings);
+      this.addToHistory('raster-preview', `Use ${settings.mode} preview for ${target}`, {
+        target,
+        data: preview,
+      });
     },
 
     setLineWidth(value: number) {

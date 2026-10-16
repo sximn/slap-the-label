@@ -48,6 +48,7 @@
   const TYPE_ICONS: Record<HistoryActionType | 'default', typeof ImageIcon> = {
     image: ImageIcon,
     mask: ScanFace,
+    'raster-preview': ScanFace,
     annotation: FilePlus,
     visibility: Eye,
     coordinates: ScanFace,

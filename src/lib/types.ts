@@ -33,6 +33,52 @@ export interface ImageData {
   width: number;
   height: number;
   canvasElement: HTMLCanvasElement;
+  raster?: TiffRaster;
+  preview?: RasterPreviewSettings;
+  labelColors?: Map<number, readonly [number, number, number, number]>;
+}
+
+export type RasterSamples =
+  | Uint8Array
+  | Int8Array
+  | Uint16Array
+  | Int16Array
+  | Uint32Array
+  | Int32Array
+  | Float32Array
+  | Float64Array;
+
+export interface TiffRaster {
+  width: number;
+  height: number;
+  // Separate native typed bands, in row-major order. Previews never modify these.
+  bands: RasterSamples[];
+  // Retain the original file, including metadata not interpreted by the viewer.
+  sourceBuffer: ArrayBuffer;
+  metadata: {
+    bitsPerSample: number[];
+    sampleFormat: number[];
+    samplesPerPixel: number;
+    photometric: number;
+    byteOrder: 'little-endian' | 'big-endian';
+    planarConfiguration: number;
+    storageRowStrideBytes: number;
+    colorMap?: number[];
+    extraSamples: number[];
+    noData: number | null;
+    pageCount: number;
+    pageIndex: number;
+    tags: Record<string, unknown>;
+  };
+}
+
+export type RasterPreviewMode = 'photograph' | 'continuous' | 'labels';
+export type RasterTarget = 'image' | 'mask';
+
+export interface RasterPreviewSettings {
+  mode: RasterPreviewMode;
+  // omit to use the finite data range for a continuous preview
+  window?: { min: number; max: number };
 }
 
 export interface DrawSettings {

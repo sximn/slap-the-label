@@ -8,6 +8,8 @@
   import { Eye, EyeOff } from '@lucide/svelte';
   import { isMaskVisualizationType } from '$lib/types';
   import { isImageCoordinateSpace } from '$lib/utils/coordinates';
+  import { processImageFile } from '$lib/utils/files/imageLoader';
+  import RasterPreviewControls from './RasterPreviewControls.svelte';
 
   const ctx = getCanvasContext();
 
@@ -76,6 +78,11 @@
   </div>
 
   <Separator />
+
+  {#if ctx.imageData?.raster}
+    <RasterPreviewControls data={ctx.imageData} target="image" />
+    <Separator />
+  {/if}
 
   <div class="space-y-4">
     <h3 class="text-sm font-medium tracking-wide text-foreground/70 uppercase">
@@ -181,6 +188,34 @@
 
   <div class="space-y-4">
     <h3 class="text-sm font-medium tracking-wide text-foreground/70 uppercase">Masks</h3>
+
+    <label class="inline-flex cursor-pointer rounded-md border border-border px-3 py-2 text-sm">
+      Load mask
+      <input
+        class="sr-only"
+        type="file"
+        accept="image/*,.tif,.tiff"
+        disabled={!ctx.imageData}
+        onchange={async (event) => {
+          const input = event.currentTarget;
+          const file = input.files?.[0];
+          if (!file) return;
+          try {
+            await processImageFile(file, ctx, 'mask');
+          } catch (error) {
+            alert((error as Error).message);
+          } finally {
+            input.value = '';
+          }
+        }}
+      />
+    </label>
+    <p class="text-xs text-muted-foreground">
+      Masks must match the image size. TIFF masks use integer class IDs, with zero as background.
+    </p>
+    {#if ctx.maskData?.raster}
+      <RasterPreviewControls data={ctx.maskData} target="mask" />
+    {/if}
 
     <div class="space-y-2">
       <div class="flex justify-between">

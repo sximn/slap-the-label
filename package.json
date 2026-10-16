@@ -27,6 +27,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
+    "geotiff": "^3.0.5",
     "konva": "^10.0.2",
     "mode-watcher": "^1.1.0",
     "paneforge": "^1.0.2",
