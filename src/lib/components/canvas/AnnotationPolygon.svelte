@@ -1,8 +1,8 @@
 <script lang="ts">
   import { getCanvasContext } from '$lib/context/canvasContext.svelte';
   import type { PolygonAnnotation } from '$lib/types';
-  import { watch } from 'runed';
   import { Line, Text } from 'svelte-konva';
+  import { getPolygonDisplayColor } from '$lib/utils/annotationColor';
 
   let {
     polygon,
@@ -18,11 +18,7 @@
     color?: string;
   } = $props();
 
-  const id = $props.id();
-
   const ctx = getCanvasContext();
-
-  let strokeWidth = $state(12);
 
   // scale polygon points to image dimensions
   const scaledPoints = $derived(
@@ -44,25 +40,7 @@
     return { x: sumX / count, y: sumY / count };
   });
 
-  // watch(
-  //   () => ctx.drawSettings.lineWidth,
-  //   () => console.log('lwch'),
-  // );
-
-  const displayColor = $derived.by(() => {
-    if (!polygon.properties) {
-      return color;
-    }
-
-    let hasColorProp =
-      'classification' in polygon.properties && 'color' in polygon.properties['classification'];
-    if (!hasColorProp) {
-      return color;
-    }
-
-    const [r, g, b] = polygon.properties['classification']['color'];
-    return `rgb(${r}, ${g}, ${b})`;
-  });
+  const displayColor = $derived(getPolygonDisplayColor(polygon.properties, color));
 </script>
 
 <Line
