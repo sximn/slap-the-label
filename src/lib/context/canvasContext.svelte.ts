@@ -40,59 +40,63 @@ export function createCanvasContext() {
   let history = $state<HistoryEntry[]>([]);
   let historyIndex = $state<number>(-1);
 
-  function recomputeState() {
-    // reset tracked state to defaults
+  function resetDocument(resetDrawSettings = true) {
     imageData = null;
     imageFileName = '';
     maskData = null;
     annotationFiles = [];
-    classColors = new Map();
-    // reset drawSettings only if a 'clear' action is encountered
+    classColors = new SvelteMap();
+
+    if (resetDrawSettings) {
+      drawSettings.lineWidth = 2;
+      drawSettings.showLabels = true;
+    }
+  }
+
+  function applyAction(action: HistoryActionPayload) {
+    switch (action.type) {
+      case 'image':
+        resetDocument();
+        imageData = action.payload.data;
+        imageFileName = action.payload.name;
+        break;
+
+      case 'mask':
+        maskData = action.payload.data;
+        break;
+
+      case 'annotation': {
+        const { payload } = action;
+        if (payload.action === 'add') {
+          // clone to avoid mutating the history entry when visibility changes
+          annotationFiles.push({ ...payload.file });
+        } else {
+          annotationFiles = annotationFiles.filter((f) => f.name !== payload.name);
+        }
+        break;
+      }
+
+      case 'visibility': {
+        const { payload } = action;
+        const file = annotationFiles.find((f) => f.name === payload.name);
+        if (file) {
+          file.visible = payload.visible;
+        }
+        break;
+      }
+
+      case 'clear':
+        resetDocument();
+        break;
+    }
+  }
+
+  function recomputeState() {
+    resetDocument(false);
 
     for (let i = 0; i <= historyIndex; i++) {
       const entry = history[i];
-      if (!entry) continue;
-
-      switch (entry.type) {
-        case 'image': {
-          const { payload } = entry;
-          imageData = payload.data;
-          imageFileName = payload.name;
-          break;
-        }
-        case 'mask': {
-          const { payload } = entry;
-          maskData = payload.data;
-          break;
-        }
-        case 'annotation': {
-          const { payload } = entry;
-          if (payload.action === 'add') {
-            // clone to avoid mutating history entry
-            annotationFiles.push({ ...payload.file });
-          } else {
-            annotationFiles = annotationFiles.filter((f) => f.name !== payload.name);
-          }
-          break;
-        }
-        case 'visibility': {
-          const { payload } = entry;
-          const file = annotationFiles.find((f) => f.name === payload.name);
-          if (file) {
-            file.visible = payload.visible;
-          }
-          break;
-        }
-        case 'clear':
-          imageData = null;
-          imageFileName = '';
-          maskData = null;
-          annotationFiles = [];
-          classColors = new Map();
-          drawSettings.lineWidth = 2;
-          drawSettings.showLabels = true;
-          break;
-      }
+      if (entry) applyAction(entry);
     }
   }
 
@@ -137,12 +141,16 @@ export function createCanvasContext() {
         history = history.slice(0, historyIndex + 1);
       }
 
-      history.push({
+      const entry = {
         type,
         label,
         payload: args[0],
         timestamp: Date.now(),
-      } as HistoryEntry);
+      } as HistoryEntry;
+
+      applyAction(entry);
+
+      history.push(entry);
       historyIndex = history.length - 1;
     },
 
@@ -168,7 +176,6 @@ export function createCanvasContext() {
     },
 
     addAnnotationFile(file: AnnotationFile) {
-      annotationFiles.push(file);
       // clone file to ensure history is immutable
       this.addToHistory('annotation', `Add ${file.name}`, { action: 'add', file: { ...file } });
     },
@@ -176,29 +183,23 @@ export function createCanvasContext() {
     toggleAnnotationFile(fileName: string) {
       const file = annotationFiles.find((f) => f.name === fileName);
       if (file) {
-        file.visible = !file.visible;
-        this.addToHistory('visibility', `${file.visible ? 'Show' : 'Hide'} ${fileName}`, {
+        const visible = !file.visible;
+        this.addToHistory('visibility', `${visible ? 'Show' : 'Hide'} ${fileName}`, {
           name: fileName,
-          visible: file.visible,
+          visible,
         });
       }
     },
 
     removeAnnotationFile(fileName: string) {
-      annotationFiles = annotationFiles.filter((f) => f.name !== fileName);
       this.addToHistory('annotation', `Remove ${fileName}`, { action: 'remove', name: fileName });
     },
 
     setImage(data: ImageData, name: string) {
-      // clearAll resets everything but doesn't record history here because we proceed to adding 'image' action
-      this.clearAll(false);
-      imageData = data;
-      imageFileName = name;
       this.addToHistory('image', 'Load Image', { data, name });
     },
 
     setMask(data: ImageData) {
-      maskData = data;
       this.addToHistory('mask', 'Load Mask', { data });
     },
 
@@ -233,16 +234,10 @@ export function createCanvasContext() {
     },
 
     clearAll(recordHistory = true) {
-      imageData = null;
-      imageFileName = '';
-      maskData = null;
-      annotationFiles = [];
-      classColors = new Map();
-      drawSettings.lineWidth = 2;
-      drawSettings.showLabels = true;
-
       if (recordHistory) {
         this.addToHistory('clear', 'Clear All');
+      } else {
+        applyAction({ type: 'clear' });
       }
     },
 
