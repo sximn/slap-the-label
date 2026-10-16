@@ -34,7 +34,7 @@
     if (e.dataTransfer?.files) {
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         if (e.dataTransfer.files[i]) {
-          const file = e.dataTransfer.files[0];
+          const file = e.dataTransfer.files[i];
 
           await loadFile(file, canvasCtx);
         }
