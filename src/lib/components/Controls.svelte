@@ -18,7 +18,7 @@
   <div class="space-y-2">
     <label class="flex items-center justify-between" for="lineWidth">
       <span class="text-sm text-muted-foreground">Line Width</span>
-      <span class="font-mono text-xs text-muted-foreground">{ctx.lineWidth}px</span>
+      <span class="font-mono text-xs text-muted-foreground">{ctx.drawSettings.lineWidth}px</span>
     </label>
     <input
       id="lineWidth"
@@ -26,7 +26,7 @@
       min="1"
       max="10"
       step="1"
-      value={ctx.lineWidth}
+      value={ctx.drawSettings.lineWidth}
       oninput={handleLineWidthChange}
       class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
     />
@@ -35,7 +35,7 @@
   <label class="flex cursor-pointer items-center gap-3">
     <input
       type="checkbox"
-      checked={ctx.showLabels}
+      checked={ctx.drawSettings.showLabels}
       onchange={handleLabelsToggle}
       class="h-4 w-4 cursor-pointer rounded accent-primary"
     />
