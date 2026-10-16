@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest';
 import type { CanvasContext } from '$lib/context/canvasContext.svelte';
 import type { ImageCoordinateSpace } from '$lib/types';
-import { parseGeoJSON, processGeoJsonFile } from '$lib/utils/files/geojsonLoader';
+import { parseGeoJSON } from '$lib/utils/files/geojsonLoader';
+import { importFile } from '$lib/utils/files/loader';
 import { getImageCoordinateScale } from '$lib/utils/coordinates';
 import { createContext, image } from './helpers/canvasContext';
 
@@ -19,7 +20,7 @@ async function loadLayer(geojson: unknown, coordinateSpace: ImageCoordinateSpace
     type: 'application/geo+json',
   });
 
-  await processGeoJsonFile(file, context, coordinateSpace);
+  await importFile(file, context, 'annotation', coordinateSpace);
   return context;
 }
 
@@ -157,7 +158,7 @@ test('empty rings are skipped and malformed positions reject the layer before ad
 
     const file = new File([JSON.stringify(feature([[[0, 0], position]]))], 'invalid.geojson');
 
-    await expect(processGeoJsonFile(file, context)).rejects.toThrow('finite numeric x and y');
+    await expect(importFile(file, context, 'annotation')).rejects.toThrow('finite numeric x and y');
     expect(context.annotationFiles).toEqual([]);
     expect(context.history).toHaveLength(1);
   }

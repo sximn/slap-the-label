@@ -1,4 +1,4 @@
-import type { CanvasContext } from '$lib/context/canvasContext.svelte';
+import type { AnnotationFile } from '$lib/types';
 import { generateClassColors, parseYoloFile } from '../yoloParser';
 
 export async function isYoloAnnotation(file: File) {
@@ -10,11 +10,7 @@ export async function isYoloAnnotation(file: File) {
   }
 }
 
-export async function processTextFile(file: File, ctx: CanvasContext) {
-  if (!ctx.imageData) {
-    throw new Error('Add an image first to view the labels');
-  }
-
+export async function readTextFile(file: File): Promise<AnnotationFile> {
   // Parse the entire file once before changing the document. Unsupported rows
   // must not be silently truncated or leave a partially imported layer.
   const annotations = parseYoloFile(await file.text());
@@ -22,10 +18,10 @@ export async function processTextFile(file: File, ctx: CanvasContext) {
     throw new Error('Text file contains no YOLO detection annotations');
   }
   const colors = generateClassColors(annotations);
-  ctx.addAnnotationFile({
+  return {
     annotations,
     color: Array.from(colors.values())[0],
     name: file.name,
     visible: true,
-  });
+  };
 }

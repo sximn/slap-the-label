@@ -74,6 +74,16 @@ export interface TiffRaster {
 
 export type RasterPreviewMode = 'photograph' | 'continuous' | 'labels';
 export type RasterTarget = 'image' | 'mask';
+export type ImportRole = RasterTarget | 'annotation';
+
+export type ImportedSource =
+  | { kind: 'raster'; name: string; data: ImageData; maskData: ImageData }
+  | {
+      kind: 'annotation';
+      name: string;
+      format: 'yolo' | 'geojson';
+      annotationFile: AnnotationFile;
+    };
 
 export interface RasterPreviewSettings {
   mode: RasterPreviewMode;

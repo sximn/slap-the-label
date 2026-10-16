@@ -1,5 +1,4 @@
-import type { CanvasContext } from '$lib/context/canvasContext.svelte';
-import type { ImageData, RasterPreviewSettings, RasterTarget } from '$lib/types';
+import type { ImageData, RasterPreviewSettings } from '$lib/types';
 import { imageDataToCanvas } from '../canvasDrawer';
 import { createRasterPreview, defaultRasterPreview } from '../rasterPreview';
 import { decodeTiff } from './tiffDecoder';
@@ -14,27 +13,29 @@ async function loadStandardImage(file: File): Promise<ImageData> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    const url = URL.createObjectURL(file);
 
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-
-      resolve({
-        width: img.width,
-        height: img.height,
-        canvasElement: canvas,
-      });
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('2D canvas context is not available');
+        ctx.drawImage(img, 0, 0);
+        resolve({ width: img.width, height: img.height, canvasElement: canvas });
+      } catch (error) {
+        reject(error);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
     };
 
-    img.onerror = (e) => {
-      console.error(e);
-      return reject(new Error('Failed to load image'));
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to decode image'));
     };
-    img.src = URL.createObjectURL(file);
+    img.src = url;
   });
 }
 
@@ -52,30 +53,5 @@ async function loadTiffImage(file: File, settings?: RasterPreviewSettings): Prom
     };
   } catch (error) {
     throw new Error(`Failed to load TIFF image: ${(error as Error).message}`);
-  }
-}
-
-export async function processImageFile(
-  file: File,
-  ctx: CanvasContext,
-  target: RasterTarget = 'image',
-) {
-  try {
-    if (target === 'mask' && !ctx.imageData) {
-      throw new Error('Add an image before loading a mask');
-    }
-    const { imageData } = await loadImage(file, target === 'mask' ? { mode: 'labels' } : undefined);
-    if (target === 'mask') {
-      if (ctx.imageData?.width !== imageData.width || ctx.imageData?.height !== imageData.height) {
-        throw new Error('Mask dimensions must match the current image');
-      }
-      ctx.setMask(imageData);
-    } else {
-      ctx.setImage(imageData, file.name);
-    }
-  } catch (error) {
-    throw new Error(
-      'Failed to load image: ' + (error instanceof Error ? error.message : String(error)),
-    );
   }
 }

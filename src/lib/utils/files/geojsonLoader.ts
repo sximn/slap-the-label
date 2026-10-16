@@ -1,5 +1,4 @@
-import type { CanvasContext } from '$lib/context/canvasContext.svelte';
-import type { ImageCoordinateSpace, PolygonAnnotation } from '$lib/types';
+import type { AnnotationFile, ImageCoordinateSpace, PolygonAnnotation } from '$lib/types';
 
 interface GeoJSONFeature {
   type: 'Feature';
@@ -17,25 +16,21 @@ interface GeoJSON {
   properties?: Record<string, any>;
 }
 
-export async function processGeoJsonFile(
+export async function readGeoJsonFile(
   file: File,
-  ctx: CanvasContext,
   coordinateSpace: ImageCoordinateSpace = 'pixel',
-) {
-  if (!ctx.imageData) {
-    throw new Error('Add an image first to view the labels');
-  }
+): Promise<AnnotationFile> {
   const color = `hsl(${Math.random() * 360}, 70%, 50%)`;
 
   const geojsonText = await file.text();
   const annotations = parseGeoJSON(geojsonText, file.name);
-  ctx.addAnnotationFile({
+  return {
     name: file.name,
     annotations,
     visible: true,
     color,
     coordinateSpace,
-  });
+  };
 }
 
 export function parseGeoJSON(geojsonText: string, sourceFile: string): PolygonAnnotation[] {

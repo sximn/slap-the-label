@@ -1,7 +1,8 @@
 import { expect, test, vi } from 'vitest';
 import { decodeTiff } from '$lib/utils/files/tiffDecoder';
 import { createRasterPreview, defaultRasterPreview } from '$lib/utils/rasterPreview';
-import { loadImage, processImageFile } from '$lib/utils/files/imageLoader';
+import { loadImage } from '$lib/utils/files/imageLoader';
+import { importFile } from '$lib/utils/files/loader';
 import { createContext, image } from './helpers/canvasContext';
 import { tiffFixture } from './helpers/tiffFixture';
 
@@ -227,7 +228,7 @@ test('same-sized scientific TIFF imports replace the image instead of becoming a
   const file = tiffFile(
     tiffFixture({ width: 3, height: 1, bits: 32, sampleFormat: 3, values: [0, 0.5, 1] }),
   );
-  await processImageFile(file, context);
+  await importFile(file, context);
   expect(context.maskData).toBeNull();
   expect(context.imageFileName).toBe('image.tif');
   expect(context.imageData?.raster?.bands[0]).toBeInstanceOf(Float32Array);
@@ -237,7 +238,7 @@ test('explicit TIFF mask import, preview changes, and undo preserve the label so
   const context = createContext();
   context.setImage(image(3, 1), 'base.png');
   const buffer = tiffFixture({ width: 3, height: 1, bits: 16, values: [0, 1, 2] });
-  await processImageFile(tiffFile(buffer), context, 'mask');
+  await importFile(tiffFile(buffer), context, 'mask');
   expect(context.imageFileName).toBe('base.png');
   const samples = context.maskData?.raster?.bands[0];
   expect(samples).toBeInstanceOf(Uint16Array);
@@ -255,19 +256,45 @@ test('explicit TIFF mask import, preview changes, and undo preserve the label so
   expect([...(samples ?? [])]).toEqual([0, 1, 2]);
 });
 
-test('mask validation leaves the current document unchanged', async () => {
+test('mismatched masks preserve the document; float masks retain continuous samples', async () => {
   const context = createContext();
   context.setImage(image(3, 1), 'base.png');
   await expect(
-    processImageFile(tiffFile(tiffFixture({ width: 1, height: 1, values: [1] })), context, 'mask'),
+    importFile(tiffFile(tiffFixture({ width: 1, height: 1, values: [1] })), context, 'mask'),
   ).rejects.toThrow(/dimensions/);
   const floatFile = tiffFile(
     tiffFixture({ width: 3, height: 1, bits: 32, sampleFormat: 3, values: [0, 1, 2] }),
   );
-  await expect(processImageFile(floatFile, context, 'mask')).rejects.toThrow(/not supported/);
+  await importFile(floatFile, context, 'mask');
   expect(context.imageFileName).toBe('base.png');
+  expect(context.maskData?.raster?.bands[0]).toBeInstanceOf(Float32Array);
+  expect(context.maskData?.preview?.mode).toBe('continuous');
+  expect(context.history).toHaveLength(3);
+});
+
+test('reinterpreting an import cannot resurrect its previous mask through a later preview step', async () => {
+  const context = createContext();
+  context.setImage(image(3, 1), 'base.png');
+  await importFile(
+    tiffFile(tiffFixture({ width: 3, height: 1, bits: 16, values: [0, 1, 2] })),
+    context,
+  );
+  const importId = context.history.at(-1)!.timestamp;
+  const samples = context.maskData?.raster?.bands[0];
+  context.setRasterPreview('mask', { mode: 'continuous' });
+  const previewId = context.history.at(-1)!.timestamp;
+
+  context.changeImportRole(importId, 'image');
+  expect(context.imageFileName).toBe('image.tif');
+  expect(context.imageData?.raster?.bands[0]).toBe(samples);
   expect(context.maskData).toBeNull();
-  expect(context.history).toHaveLength(1);
+  expect(context.getHistoryError(previewId)).toContain('no longer active');
+
+  context.undo();
+  expect(context.imageFileName).toBe('base.png');
+  expect(context.maskData?.preview?.mode).toBe('continuous');
+  expect(context.maskData?.raster?.bands[0]).toBe(samples);
+  expect(context.getHistoryError(previewId)).toBeUndefined();
 });
 
 test('image loading retains source metadata independently of its display canvas', async () => {

@@ -2,6 +2,7 @@
   import * as Resizable from '$lib/components/ui/resizable';
   import * as Sidebar from '$lib/components/ui/sidebar';
   import * as Tooltip from '$lib/components/ui/tooltip';
+  import { Tooltip as TooltipPrimitive } from 'bits-ui';
   import { getCanvasContext } from '$lib/context/canvasContext.svelte';
   import { getContentPaneContext } from '$lib/context/contentPaneContext.svelte';
   import type { Snippet } from 'svelte';
@@ -11,6 +12,7 @@
   import { PanelRightClose, PanelRightOpen, History, Settings2, Trash2 } from '@lucide/svelte';
   import { cmdOrCtrl } from '$lib/hooks/is-mac.svelte';
   import DisplaySettingsPanel from './DisplaySettingsPanel.svelte';
+  import FileImportButton from '$lib/components/FileImportButton.svelte';
   import { Button } from '../ui/button';
 
   const INITIAL_OPEN = true;
@@ -84,6 +86,12 @@
       sidebarPane.collapse();
     }
   });
+
+  type ActionTooltipPayload = {
+    description: string;
+  };
+
+  const actionsTether = TooltipPrimitive.createTether<ActionTooltipPayload>();
 </script>
 
 <svelte:window bind:innerWidth onkeydown={handleKeydown} />
@@ -136,7 +144,7 @@
               </Tabs.List>
             </div>
 
-            <Tabs.Content value="history" class="flex-1 overflow-hidden pt-2">
+            <Tabs.Content value="history" class="flex-1 overflow-y-auto pt-2">
               <HistoryPanel />
             </Tabs.Content>
 
@@ -146,14 +154,51 @@
           </Tabs.Root>
         </Sidebar.Content>
 
-        <Sidebar.Footer>
-          <Sidebar.Group class="items- w-full flex-row justify-end gap-2">
-            <Button onclick={handleClear} variant="outline">
-              <Trash2 />
-              Clear Pane
-            </Button>
-            <LightSwitch />
-          </Sidebar.Group>
+        <Sidebar.Footer class="flex-row items-center gap-2 border-t border-border p-3">
+          <!-- <Tooltip.Root> -->
+          <Tooltip.Trigger
+            tether={actionsTether}
+            payload={{
+              description: 'Import images, masks, or annotations',
+            }}
+          >
+            {#snippet child({ props })}
+              <FileImportButton {...props} />
+            {/snippet}
+          </Tooltip.Trigger>
+          <!-- <Tooltip.Content side="top">Import images, masks, or annotations</Tooltip.Content>
+          </Tooltip.Root> -->
+
+          <!-- <Tooltip.Root> -->
+          <Tooltip.Trigger
+            tether={actionsTether}
+            payload={{
+              description: 'Clear Pane',
+            }}
+          >
+            {#snippet child({ props })}
+              <Button {...props} onclick={handleClear} variant="outline" size="icon">
+                <Trash2 />
+                <span class="sr-only">Clear Pane</span>
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <!-- <Tooltip.Content side="top">Clear Pane</Tooltip.Content>
+          </Tooltip.Root> -->
+
+          <!-- <Tooltip.Root> -->
+          <Tooltip.Trigger
+            tether={actionsTether}
+            payload={{
+              description: 'Toggle Theme',
+            }}
+          >
+            {#snippet child({ props })}
+              <LightSwitch {...props} />
+            {/snippet}
+          </Tooltip.Trigger>
+          <!-- <Tooltip.Content side="top">Toggle Theme</Tooltip.Content>
+          </Tooltip.Root> -->
         </Sidebar.Footer>
 
         <Sidebar.Rail />
@@ -161,6 +206,17 @@
     </Resizable.Pane>
   </Resizable.PaneGroup>
 </Sidebar.Provider>
+
+<Tooltip.Root tether={actionsTether}>
+  {#snippet children({ payload })}
+    <Tooltip.Portal>
+      <Tooltip.Content side="top"
+        >{payload?.description ??
+          'Hover a detached action button to see what it does.'}</Tooltip.Content
+      >
+    </Tooltip.Portal>
+  {/snippet}
+</Tooltip.Root>
 
 {#snippet tooltippedSidebarTrigger()}
   {#if paneCtx.isMobile}

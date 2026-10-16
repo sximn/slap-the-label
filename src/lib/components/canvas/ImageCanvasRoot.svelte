@@ -1,7 +1,6 @@
 <script lang="ts">
   import { getCanvasContext } from '$lib/context/canvasContext.svelte';
   import { getContentPaneContext } from '$lib/context/contentPaneContext.svelte';
-  import { loadFile } from '$lib/utils/files/loader';
   import { watch, watchOnce } from 'runed';
   import { onDestroy, onMount } from 'svelte';
   import { Stage } from 'svelte-konva';
@@ -31,15 +30,8 @@
   async function handleDrop(e: DragEvent) {
     e.preventDefault();
     isDraggingOver = false;
-    if (e.dataTransfer?.files) {
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        if (e.dataTransfer.files[i]) {
-          const file = e.dataTransfer.files[i];
-
-          await loadFile(file, canvasCtx);
-        }
-      }
-    }
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length) await canvasCtx.importFiles(files);
   }
   function resetStageZoom(imgWidth: number, imgHeight: number) {
     if (!stageRef) return;
@@ -87,12 +79,6 @@
         return;
       }
       const stage = stageRef.node;
-      const container = stage.container();
-
-      container.addEventListener('dragover', handleDragOver);
-      container.addEventListener('dragleave', handleDragLeave);
-      container.addEventListener('drop', handleDrop);
-
       const scaleBy = 1.0337;
       stage.on('wheel', (e) => {
         // stop default scrolling
@@ -152,11 +138,6 @@
     }
     const stage = stageRef.node;
     stage.off('wheel');
-
-    const container = stage.container();
-    container.removeEventListener('dragover', handleDragOver);
-    container.removeEventListener('dragleave', handleDragLeave);
-    container.removeEventListener('drop', handleDrop);
   });
 </script>
 
@@ -170,6 +151,11 @@
   -->
   {#if isMounted}
     <div
+      role="region"
+      aria-label="Annotation canvas"
+      ondragover={handleDragOver}
+      ondragleave={handleDragLeave}
+      ondrop={handleDrop}
       class="absolute top-0 left-0 overflow-hidden rounded-2xl border border-border bg-sidebar/60"
       class:drop-highlight={isDraggingOver}
       style={`
@@ -178,6 +164,25 @@
       `}
       in:scalefade={{ duration: 500, easing: cubicIn }}
     >
+      <div class="absolute top-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-col gap-2">
+        {#if canvasCtx.isImporting}
+          <p class="rounded-md bg-background px-3 py-2 text-sm" role="status">Importing files…</p>
+        {/if}
+        {#if canvasCtx.importErrors.length}
+          <div
+            class="max-h-48 overflow-auto rounded-md border border-destructive bg-background p-3 text-sm"
+            role="alert"
+          >
+            <p class="font-medium">Import failed</p>
+            <ul class="list-inside list-disc">
+              {#each canvasCtx.importErrors as error}<li>{error}</li>{/each}
+            </ul>
+            <button class="mt-2 underline" onclick={() => canvasCtx.dismissImportErrors()}
+              >Dismiss</button
+            >
+          </div>
+        {/if}
+      </div>
       <Stage bind:this={stageRef} {width} {height}>
         {#if canvasCtx.imageData}
           <ImageLayer

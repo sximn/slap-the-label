@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { parseYoloFile } from '$lib/utils/yoloParser';
-import { isYoloAnnotation, processTextFile } from '$lib/utils/files/textLoader';
+import { isYoloAnnotation } from '$lib/utils/files/textLoader';
+import { importFile } from '$lib/utils/files/loader';
 import { createContext, image } from './helpers/canvasContext';
 
 const detection = '0 0.5 0.4 0.2 0.1';
@@ -54,7 +55,7 @@ test('imports reject segmentation beyond the old sniffing limit without changing
 
   const context = createContext();
   context.setImage(image(100), 'image.png');
-  await expect(processTextFile(file(content), context)).rejects.toThrow(
+  await expect(importFile(file(content), context, 'annotation')).rejects.toThrow(
     /segmentation.*not supported/i,
   );
   expect(context.imageFileName).toBe('image.png');
@@ -65,7 +66,7 @@ test('imports reject segmentation beyond the old sniffing limit without changing
 test('valid detection imports add bounding boxes and one history entry', async () => {
   const context = createContext();
   context.setImage(image(100), 'image.png');
-  await processTextFile(file(detection), context);
+  await importFile(file(detection), context, 'annotation');
 
   expect(context.annotationFiles).toHaveLength(1);
   expect(context.annotationFiles[0]).toMatchObject({
@@ -80,7 +81,7 @@ test('empty or comment-only input is not imported as a successful detection laye
   const context = createContext();
   context.setImage(image(100), 'image.png');
   expect(await isYoloAnnotation(file('# no detections\n\n'))).toBe(false);
-  await expect(processTextFile(file('# no detections\n\n'), context)).rejects.toThrow(
+  await expect(importFile(file('# no detections\n\n'), context, 'annotation')).rejects.toThrow(
     /no YOLO detection/i,
   );
   expect(context.annotationFiles).toEqual([]);

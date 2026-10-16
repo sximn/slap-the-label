@@ -7,13 +7,18 @@ import type {
   ImageCoordinateSpace,
   RasterTarget,
   RasterPreviewSettings,
+  ImportRole,
+  ImportedSource,
 } from '$lib/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { withRasterPreview } from '$lib/utils/rasterPreview';
+import { getImportTransition, importFiles } from '$lib/utils/files/loader';
 
 const CONTEXT_KEY = Symbol('CANVAS');
 
 export type HistoryActionPayload =
+  | { type: 'import'; payload: { source: ImportedSource; role: ImportRole } }
+  | { type: 'import-role'; payload: { importId: number; role: ImportRole } }
   | { type: 'image'; payload: { data: ImageData; name: string } }
   | { type: 'mask'; payload: { data: ImageData } }
   | { type: 'raster-preview'; payload: { target: RasterTarget; data: ImageData } }
@@ -51,6 +56,11 @@ export function createCanvasContext() {
   let history = $state<HistoryEntry[]>([]);
   let historyIndex = $state<number>(-1);
   let historyBaseline = captureDocument();
+  let importErrors = $state<string[]>([]);
+  let isImporting = $state(false);
+  let historyErrors = $state<Record<number, string>>({});
+  let roleErrors = $state<Record<number, string>>({});
+  let lastTimestamp = 0;
 
   function cloneAnnotationFiles(files: AnnotationFile[]) {
     return structuredClone($state.snapshot(files));
@@ -67,13 +77,13 @@ export function createCanvasContext() {
     };
   }
 
-  function restoreBaseline() {
-    imageData = historyBaseline.imageData;
-    imageFileName = historyBaseline.imageFileName;
-    maskData = historyBaseline.maskData;
-    annotationFiles = cloneAnnotationFiles(historyBaseline.annotationFiles);
-    classColors = new SvelteMap(historyBaseline.classColors);
-    Object.assign(drawSettings, historyBaseline.drawSettings);
+  function restoreDocument(document: ReturnType<typeof captureDocument>) {
+    imageData = document.imageData;
+    imageFileName = document.imageFileName;
+    maskData = document.maskData;
+    annotationFiles = cloneAnnotationFiles(document.annotationFiles);
+    classColors = new SvelteMap(document.classColors);
+    Object.assign(drawSettings, document.drawSettings);
   }
 
   function resetDocument() {
@@ -89,6 +99,12 @@ export function createCanvasContext() {
 
   function applyAction(action: HistoryActionPayload) {
     switch (action.type) {
+      case 'import':
+        applyAction(getImportTransition(action.payload.source, action.payload.role, imageData));
+        break;
+      case 'import-role':
+        // Role overrides are resolved before replaying imports.
+        break;
       case 'image':
         resetDocument();
         imageData = action.payload.data;
@@ -100,6 +116,14 @@ export function createCanvasContext() {
         break;
 
       case 'raster-preview':
+        if (
+          (action.payload.target === 'image' ? imageData : maskData)?.raster !==
+          action.payload.data.raster
+        ) {
+          throw new Error(
+            'This preview targets a raster that is no longer active after changing import roles.',
+          );
+        }
         if (action.payload.target === 'image') imageData = action.payload.data;
         else maskData = action.payload.data;
         break;
@@ -136,16 +160,121 @@ export function createCanvasContext() {
     }
   }
 
-  function recomputeState() {
-    restoreBaseline();
-
+  function roleOverrides() {
+    const roles = new Map<number, ImportRole>();
     for (let i = 0; i <= historyIndex; i++) {
       const entry = history[i];
-      if (entry) applyAction(entry);
+      if (entry?.type === 'import-role') roles.set(entry.payload.importId, entry.payload.role);
+    }
+    return roles;
+  }
+
+  function applyEntry(entry: HistoryEntry, overrides = roleOverrides()) {
+    try {
+      applyAction(
+        entry.type === 'import'
+          ? {
+              ...entry,
+              payload: {
+                ...entry.payload,
+                role: overrides.get(entry.timestamp) ?? entry.payload.role,
+              },
+            }
+          : entry,
+      );
+      delete historyErrors[entry.timestamp];
+    } catch (error) {
+      historyErrors[entry.timestamp] = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  function recomputeState() {
+    restoreDocument(historyBaseline);
+    historyErrors = {};
+    roleErrors = {};
+    const overrides = roleOverrides();
+    for (let i = 0; i <= historyIndex; i++) {
+      const entry = history[i];
+      if (entry) applyEntry(entry, overrides);
     }
   }
 
   const context = {
+    get importErrors() {
+      return importErrors;
+    },
+    get isImporting() {
+      return isImporting;
+    },
+    dismissImportErrors() {
+      importErrors = [];
+    },
+    async importFiles(files: File[], role?: ImportRole) {
+      if (isImporting) {
+        importErrors = [
+          'An import is already running. Wait for it to finish before importing more files.',
+        ];
+        return;
+      }
+      isImporting = true;
+      importErrors = [];
+      try {
+        const result = await importFiles(files, context, role);
+        importErrors = result.errors;
+      } catch (error) {
+        importErrors = [error instanceof Error ? error.message : String(error)];
+      } finally {
+        isImporting = false;
+      }
+    },
+    addImport(source: ImportedSource, role: ImportRole): string | undefined {
+      const entry = this.addToHistory('import', source.name, { source, role });
+      return historyErrors[entry.timestamp];
+    },
+    getImportRole(importId: number): ImportRole | undefined {
+      const entry = history.find((item) => item.timestamp === importId);
+      return entry?.type === 'import'
+        ? (roleOverrides().get(importId) ?? entry.payload.role)
+        : undefined;
+    },
+    getHistoryError(id: number): string | undefined {
+      return roleErrors[id] ?? historyErrors[id];
+    },
+    changeImportRole(importId: number, role: ImportRole) {
+      const index = history.findIndex((entry) => entry.timestamp === importId);
+      const entry = history[index];
+      if (entry?.type !== 'import') return;
+      if (isImporting || index > historyIndex) {
+        roleErrors[importId] =
+          'Finish the current import and redo this history step before changing its role.';
+        return;
+      }
+      const current = captureDocument();
+      let error: string | undefined;
+      const existingErrors = { ...historyErrors };
+      try {
+        restoreDocument(historyBaseline);
+        const overrides = roleOverrides();
+        for (let i = 0; i < index; i++) applyEntry(history[i], overrides);
+        getImportTransition(entry.payload.source, role, imageData);
+      } catch (reason) {
+        error = reason instanceof Error ? reason.message : String(reason);
+      } finally {
+        restoreDocument(current);
+        historyErrors = existingErrors;
+      }
+      if (error) {
+        roleErrors[importId] = error;
+        return;
+      }
+      delete roleErrors[importId];
+      if (this.getImportRole(importId) === role) return;
+      this.addToHistory('import-role', `Treat ${entry.payload.source.name} as ${role}`, {
+        importId,
+        role,
+      });
+      importErrors = [];
+    },
     get imageData() {
       return imageData;
     },
@@ -190,13 +319,14 @@ export function createCanvasContext() {
         type,
         label,
         payload: args[0],
-        timestamp: Date.now(),
+        timestamp: (lastTimestamp = Math.max(Date.now(), lastTimestamp + 1)),
       } as HistoryEntry;
-
-      applyAction(entry);
 
       history.push(entry);
       historyIndex = history.length - 1;
+      if (type === 'import-role') recomputeState();
+      else applyEntry(entry);
+      return entry;
     },
 
     undo() {
@@ -310,6 +440,8 @@ export function createCanvasContext() {
       historyBaseline = captureDocument();
       history = [];
       historyIndex = -1;
+      historyErrors = {};
+      roleErrors = {};
     },
 
     reorderHistory(newHistory: HistoryEntry[]) {

@@ -4,6 +4,7 @@
   import { ModeWatcher } from 'mode-watcher';
   import { createCanvasContext } from '$lib/context/canvasContext.svelte';
   import { createContentPaneContext } from '$lib/context/contentPaneContext.svelte';
+  import * as Tooltip from '$lib/components/ui/tooltip';
 
   let { children }: { children?: Snippet } = $props();
 
@@ -12,4 +13,6 @@
 </script>
 
 <ModeWatcher />
-{@render children?.()}
+<Tooltip.Provider>
+  {@render children?.()}
+</Tooltip.Provider>

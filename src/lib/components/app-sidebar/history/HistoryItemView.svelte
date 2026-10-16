@@ -18,6 +18,7 @@
   import { slide, scale } from 'svelte/transition';
   import { backOut, cubicOut, linear } from 'svelte/easing';
   import type { Attachment } from 'svelte/attachments';
+  import { isImportRole } from '$lib/utils/files/loader';
 
   interface Props {
     historyEntry: HistoryEntry;
@@ -46,6 +47,8 @@
   const ctx = getCanvasContext();
 
   const TYPE_ICONS: Record<HistoryActionType | 'default', typeof ImageIcon> = {
+    import: ImageIcon,
+    'import-role': ScanFace,
     image: ImageIcon,
     mask: ScanFace,
     'raster-preview': ScanFace,
@@ -66,7 +69,9 @@
     return TYPE_ICONS[type] || TYPE_ICONS.default;
   }
 
-  const Icon = $derived(getIcon(historyEntry.type, historyEntry.label));
+  const importRole = $derived(ctx.getImportRole(historyEntry.timestamp));
+  const error = $derived(ctx.getHistoryError(historyEntry.timestamp));
+  const Icon = $derived(getIcon(importRole ?? historyEntry.type, historyEntry.label));
 </script>
 
 <div
@@ -127,4 +132,30 @@
       <span class="truncate">{historyEntry.label}</span>
     </div>
   </button>
+  {#if historyEntry.type === 'import' && !isOverlay}
+    <div class="mb-2 ml-8 space-y-1 pr-2">
+      <label class="flex items-center gap-2 text-xs text-muted-foreground">
+        Treat as
+        <select
+          class="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-foreground"
+          aria-label={`Interpret ${historyEntry.payload.source.name} as`}
+          value={importRole}
+          disabled={isFuture || isDragging || ctx.isImporting}
+          onpointerdown={(event) => event.stopPropagation()}
+          onchange={(event) => {
+            const value = event.currentTarget.value;
+            if (isImportRole(value)) ctx.changeImportRole(historyEntry.timestamp, value);
+            event.currentTarget.value = ctx.getImportRole(historyEntry.timestamp) ?? '';
+          }}
+        >
+          <option value="image">Image</option>
+          <option value="mask">Mask</option>
+          <option value="annotation">Annotation</option>
+        </select>
+      </label>
+    </div>
+  {/if}
+  {#if error && !isOverlay}
+    <p class="mb-2 ml-8 pr-2 text-xs break-words text-destructive" role="alert">{error}</p>
+  {/if}
 </div>
