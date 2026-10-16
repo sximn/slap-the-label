@@ -27,7 +27,7 @@ function loadAnnotatedImage(context: CanvasContext) {
 function assertImageA(context: CanvasContext) {
   expect(context.imageFileName).toBe('A.png');
   expect(context.imageData?.width).toBe(100);
-  expect(context.annotationFiles).toEqual([labels, polygons]);
+  expect(context.annotationFiles).toMatchObject([labels, polygons]);
   expect(context.maskData?.width).toBe(100);
 }
 
@@ -130,7 +130,8 @@ test('replacing an image after undo discards the old redo branch', () => {
 test('annotation visibility, removal, and clear use the same transitions during replay', () => {
   const context = createContext();
   loadAnnotatedImage(context);
-  context.toggleAnnotationFile(labels.name);
+  const [labelLayer, polygonLayer] = context.annotationFiles;
+  context.toggleAnnotationFile(labelLayer.id);
   expect(context.annotationFiles[0].visible).toBe(false);
   expect(context.history[1]).toMatchObject({
     type: 'annotation',
@@ -142,7 +143,7 @@ test('annotation visibility, removal, and clear use the same transitions during 
   context.redo();
   expect(context.annotationFiles[0].visible).toBe(false);
 
-  context.removeAnnotationFile(polygons.name);
+  context.removeAnnotationFile(polygonLayer.id);
   expect(context.annotationFiles.map((file) => file.name)).toEqual([labels.name]);
   context.undo();
   expect(context.annotationFiles.length).toBe(2);
@@ -194,8 +195,9 @@ test('clearing history adopts the complete current document as the undo baseline
 test('baseline layers remain immutable across visibility changes and direct mutations', () => {
   const context = createContext();
   loadAnnotatedImage(context);
+  const labelId = context.annotationFiles[0].id;
   context.clearHistory();
-  context.toggleAnnotationFile(labels.name);
+  context.toggleAnnotationFile(labelId);
   expect(context.annotationFiles[0].visible).toBe(false);
   context.undo();
   assertImageA(context);
@@ -203,12 +205,12 @@ test('baseline layers remain immutable across visibility changes and direct muta
   context.annotationFiles[0].color = '#abcdef';
   const polygon = context.annotationFiles[1].annotations[0];
   if (polygon.type === 'polygon') polygon.points[0] = 42;
-  context.removeAnnotationFile(labels.name);
+  context.removeAnnotationFile(labelId);
   context.jumpTo(-1);
   assertImageA(context);
 
   // Restoring the baseline must also create fresh copies on every replay.
-  context.toggleAnnotationFile(labels.name);
+  context.toggleAnnotationFile(labelId);
   context.undo();
   assertImageA(context);
 });

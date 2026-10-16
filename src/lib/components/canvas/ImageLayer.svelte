@@ -42,7 +42,7 @@
     {/if}
   </Group>
 
-  {#each ctx.annotationFiles as annotationFile}
+  {#each ctx.annotationFiles as annotationFile (annotationFile.id)}
     {@const layerScale = getImageCoordinateScale(
       annotationFile.coordinateSpace ?? 'normalized',
       scaleX,

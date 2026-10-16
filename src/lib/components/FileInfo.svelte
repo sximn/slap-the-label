@@ -24,7 +24,7 @@
         <span class="break-all">{ctx.imageFileName}</span>
       </div>
     {/if}
-    {#each ctx.annotationFiles as file}
+    {#each ctx.annotationFiles as file (file.id)}
       <div class="flex items-start gap-2 text-muted-foreground">
         <svg
           class="mt-0.5 h-3.5 w-3.5 flex-shrink-0"

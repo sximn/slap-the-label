@@ -3,6 +3,7 @@ import type {
   DrawSettings,
   ImageData,
   AnnotationFile,
+  AnnotationLayer,
   DisplaySettings,
   ImageCoordinateSpace,
   RasterTarget,
@@ -17,17 +18,19 @@ import { getImportTransition, importFiles } from '$lib/utils/files/loader';
 const CONTEXT_KEY = Symbol('CANVAS');
 
 export type HistoryActionPayload =
-  | { type: 'import'; payload: { source: ImportedSource; role: ImportRole } }
+  | { type: 'import'; payload: { source: ImportedSource; role: ImportRole; layerId: string } }
   | { type: 'import-role'; payload: { importId: number; role: ImportRole } }
   | { type: 'image'; payload: { data: ImageData; name: string } }
   | { type: 'mask'; payload: { data: ImageData } }
   | { type: 'raster-preview'; payload: { target: RasterTarget; data: ImageData } }
   | {
       type: 'annotation';
-      payload: { action: 'add'; file: AnnotationFile } | { action: 'remove'; name: string };
+      payload:
+        | { action: 'add'; file: AnnotationFile; layerId: string }
+        | { action: 'remove'; layerId: string };
     }
-  | { type: 'visibility'; payload: { name: string; visible: boolean } }
-  | { type: 'coordinates'; payload: { name: string; coordinateSpace: ImageCoordinateSpace } }
+  | { type: 'visibility'; payload: { layerId: string; visible: boolean } }
+  | { type: 'coordinates'; payload: { layerId: string; coordinateSpace: ImageCoordinateSpace } }
   | { type: 'clear'; payload?: never };
 
 export type HistoryActionType = HistoryActionPayload['type'];
@@ -49,7 +52,7 @@ export function createCanvasContext() {
   let imageFileName = $state<string>('');
 
   let maskData = $state<ImageData | null>(null);
-  let annotationFiles = $state<AnnotationFile[]>([]);
+  let annotationFiles = $state<AnnotationLayer[]>([]);
   let classColors: Map<string, string> = new SvelteMap();
 
   let stageSettings = $state<{ zoomX: number; zoomY: number }>({ zoomX: 1, zoomY: 1 });
@@ -74,7 +77,7 @@ export function createCanvasContext() {
     return (lastTimestamp = Math.max(Date.now(), lastTimestamp + 1));
   }
 
-  function cloneAnnotationFiles(files: AnnotationFile[]) {
+  function cloneAnnotationFiles(files: AnnotationLayer[]) {
     return structuredClone($state.snapshot(files));
   }
 
@@ -109,11 +112,26 @@ export function createCanvasContext() {
     drawSettings.showLabels = true;
   }
 
+  function appendAnnotationLayer(file: AnnotationFile, layerId: string) {
+    // Keep the ID stored by the action, including during history replay.
+    annotationFiles.push({ ...file, id: layerId });
+  }
+
   function applyAction(action: HistoryActionPayload) {
     switch (action.type) {
-      case 'import':
-        applyAction(getImportTransition(action.payload.source, action.payload.role, imageData));
+      case 'import': {
+        const transition = getImportTransition(
+          action.payload.source,
+          action.payload.role,
+          imageData,
+        );
+        if (transition.type === 'annotation') {
+          appendAnnotationLayer(transition.payload.file, action.payload.layerId);
+        } else {
+          applyAction(transition);
+        }
         break;
+      }
       case 'import-role':
         // Role overrides are resolved before replaying imports.
         break;
@@ -144,16 +162,16 @@ export function createCanvasContext() {
         const { payload } = action;
         if (payload.action === 'add') {
           // clone to avoid mutating the history entry when visibility changes
-          annotationFiles.push({ ...payload.file });
+          appendAnnotationLayer(payload.file, payload.layerId);
         } else {
-          annotationFiles = annotationFiles.filter((f) => f.name !== payload.name);
+          annotationFiles = annotationFiles.filter((f) => f.id !== payload.layerId);
         }
         break;
       }
 
       case 'visibility': {
         const { payload } = action;
-        const file = annotationFiles.find((f) => f.name === payload.name);
+        const file = annotationFiles.find((f) => f.id === payload.layerId);
         if (file) {
           file.visible = payload.visible;
         }
@@ -165,7 +183,7 @@ export function createCanvasContext() {
         break;
 
       case 'coordinates': {
-        const file = annotationFiles.find((f) => f.name === action.payload.name);
+        const file = annotationFiles.find((f) => f.id === action.payload.layerId);
         if (file) file.coordinateSpace = action.payload.coordinateSpace;
         break;
       }
@@ -295,7 +313,7 @@ export function createCanvasContext() {
     },
     addImport(source: ImportedSource, role: ImportRole): string | undefined {
       try {
-        this.addToHistory('import', source.name, { source, role });
+        this.addToHistory('import', source.name, { source, role, layerId: crypto.randomUUID() });
       } catch (reason) {
         const error = reason instanceof Error ? reason.message : String(reason);
         // Retain the decoded source for correction without forking document history.
@@ -327,7 +345,11 @@ export function createCanvasContext() {
           roleErrors[importId] = error;
           return;
         }
-        this.addToHistory('import', attempt.source.name, { source: attempt.source, role });
+        this.addToHistory('import', attempt.source.name, {
+          source: attempt.source,
+          role,
+          layerId: crypto.randomUUID(),
+        });
         failedImports = failedImports.filter((item) => item.timestamp !== importId);
         delete roleErrors[importId];
         importErrors = [];
@@ -431,29 +453,35 @@ export function createCanvasContext() {
 
     addAnnotationFile(file: AnnotationFile) {
       // clone file to ensure history is immutable
-      this.addToHistory('annotation', `Add ${file.name}`, { action: 'add', file: { ...file } });
+      this.addToHistory('annotation', `Add ${file.name}`, {
+        action: 'add',
+        file: { ...file },
+        layerId: crypto.randomUUID(),
+      });
     },
 
-    toggleAnnotationFile(fileName: string) {
-      const file = annotationFiles.find((f) => f.name === fileName);
+    toggleAnnotationFile(layerId: string) {
+      const file = annotationFiles.find((f) => f.id === layerId);
       if (file) {
         const visible = !file.visible;
-        this.addToHistory('visibility', `${visible ? 'Show' : 'Hide'} ${fileName}`, {
-          name: fileName,
+        this.addToHistory('visibility', `${visible ? 'Show' : 'Hide'} ${file.name}`, {
+          layerId,
           visible,
         });
       }
     },
 
-    removeAnnotationFile(fileName: string) {
-      this.addToHistory('annotation', `Remove ${fileName}`, { action: 'remove', name: fileName });
+    removeAnnotationFile(layerId: string) {
+      const file = annotationFiles.find((f) => f.id === layerId);
+      if (!file) return;
+      this.addToHistory('annotation', `Remove ${file.name}`, { action: 'remove', layerId });
     },
 
-    setAnnotationCoordinateSpace(fileName: string, coordinateSpace: ImageCoordinateSpace) {
-      const file = annotationFiles.find((f) => f.name === fileName);
+    setAnnotationCoordinateSpace(layerId: string, coordinateSpace: ImageCoordinateSpace) {
+      const file = annotationFiles.find((f) => f.id === layerId);
       if (!file || file.coordinateSpace === coordinateSpace) return;
-      this.addToHistory('coordinates', `Use ${coordinateSpace} coordinates for ${fileName}`, {
-        name: fileName,
+      this.addToHistory('coordinates', `Use ${coordinateSpace} coordinates for ${file.name}`, {
+        layerId,
         coordinateSpace,
       });
     },

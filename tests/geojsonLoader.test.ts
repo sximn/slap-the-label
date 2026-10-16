@@ -269,14 +269,15 @@ test('a coordinate-space change is undoable and survives clearing history', asyn
 
   const context = await loadLayer(feature([ring]));
 
-  context.setAnnotationCoordinateSpace('polygons.geojson', 'normalized');
+  const layerId = context.annotationFiles[0].id;
+  context.setAnnotationCoordinateSpace(layerId, 'normalized');
   expect(renderedPoints(context)).toEqual([[0, 0, 500, 0, 500, 250, 0, 0]]);
   context.undo();
   expect(renderedPoints(context)).toEqual([ring.flat()]);
   context.redo();
   expect(renderedPoints(context)).toEqual([[0, 0, 500, 0, 500, 250, 0, 0]]);
   context.clearHistory();
-  context.setAnnotationCoordinateSpace('polygons.geojson', 'pixel');
+  context.setAnnotationCoordinateSpace(layerId, 'pixel');
   context.undo();
   expect(renderedPoints(context)).toEqual([[0, 0, 500, 0, 500, 250, 0, 0]]);
 });

@@ -29,6 +29,10 @@ export interface AnnotationFile {
   coordinateSpace?: ImageCoordinateSpace;
 }
 
+export interface AnnotationLayer extends AnnotationFile {
+  readonly id: string;
+}
+
 export interface ImageData {
   width: number;
   height: number;

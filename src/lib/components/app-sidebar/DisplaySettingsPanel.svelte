@@ -90,12 +90,12 @@
 
     {#if ctx.displaySettings.colorMode === 'file'}
       <div class="space-y-2">
-        {#each ctx.annotationFiles as file}
+        {#each ctx.annotationFiles as file (file.id)}
           <div class="group flex items-center justify-between gap-2 text-sm">
             <div class="flex items-center gap-2 overflow-hidden">
               <button
                 class="text-muted-foreground transition-colors hover:text-foreground"
-                onclick={() => ctx.toggleAnnotationFile(file.name)}
+                onclick={() => ctx.toggleAnnotationFile(file.id)}
               >
                 {#if file.visible}
                   <Eye size={14} />
@@ -157,7 +157,7 @@
       <h3 class="text-sm font-medium tracking-wide text-foreground/70 uppercase">
         GeoJSON coordinates
       </h3>
-      {#each ctx.annotationFiles as file}
+      {#each ctx.annotationFiles as file (file.id)}
         {#if file.coordinateSpace}
           <label class="flex flex-col gap-1 text-sm">
             <span class="truncate" title={file.name}>{file.name}</span>
@@ -168,7 +168,7 @@
               onchange={(event) => {
                 const value = event.currentTarget.value;
                 if (isImageCoordinateSpace(value)) {
-                  ctx.setAnnotationCoordinateSpace(file.name, value);
+                  ctx.setAnnotationCoordinateSpace(file.id, value);
                 }
               }}
             >
