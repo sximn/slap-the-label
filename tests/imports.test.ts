@@ -70,12 +70,42 @@ test('mismatched masks report the filename and dimensions without changing any d
   expect(context.imageData).toBe(originalImage);
   expect(context.maskData).toBe(originalMask);
   expect(context.annotationFiles).toHaveLength(1);
-  expect(context.history.slice(0, originalHistory.length)).toEqual(originalHistory);
-  expect(context.history).toHaveLength(originalHistory.length + 1);
-  expect(context.getHistoryError(context.history.at(-1)!.timestamp)).toContain('Mask dimensions');
+  expect(context.history).toEqual(originalHistory);
+  expect(context.failedImports).toHaveLength(1);
+  expect(context.getHistoryError(context.failedImports[0].timestamp)).toContain('Mask dimensions');
   context.dismissImportErrors();
   expect(context.importErrors).toEqual([]);
 });
+
+test.each([undefined, 'mask'] as const)(
+  'a failed %s mask import after undo preserves the complete redo branch',
+  async (role) => {
+    const context = createContext();
+    const imageA = image(100);
+    const imageB = image(200);
+    decode.mockResolvedValueOnce({ imageData: imageA });
+    await context.importFiles([new File(['A'], 'A.png')], 'image');
+    decode.mockResolvedValueOnce({ imageData: imageB });
+    await context.importFiles([new File(['B'], 'B.png')], 'image');
+    context.undo();
+    const history = [...context.history];
+    const historyIndex = context.historyIndex;
+    decode.mockResolvedValue({ imageData: image(50) });
+
+    await context.importFiles([rasterFile], role);
+
+    expect(context.importErrors[0]).toContain('Mask dimensions 50×50');
+    expect(context.history).toEqual(history);
+    expect(context.historyIndex).toBe(historyIndex);
+    expect(context.imageData).toBe(imageA);
+    expect(context.failedImports).toHaveLength(1);
+    context.redo();
+    expect(context.imageData).toBe(imageB);
+    expect(context.imageFileName).toBe('B.png');
+    context.undo();
+    expect(context.imageData).toBe(imageA);
+  },
+);
 
 test.each<ImportRole>(['mask', 'annotation'])(
   '%s requires an image and cannot silently replace the document',
@@ -86,7 +116,8 @@ test.each<ImportRole>(['mask', 'annotation'])(
     ).rejects.toThrow('Add an image');
     expect(context.imageData).toBeNull();
     expect(context.annotationFiles).toEqual([]);
-    expect(context.history).toHaveLength(1);
+    expect(context.history).toHaveLength(0);
+    expect(context.failedImports).toHaveLength(1);
   },
 );
 
@@ -123,7 +154,8 @@ test('files incompatible with the explicit role are rejected without falling bac
   expect(decode).toHaveBeenCalledOnce();
   expect(context.imageFileName).toBe('base.png');
   expect(context.annotationFiles).toHaveLength(1);
-  expect(context.history).toHaveLength(5);
+  expect(context.history).toHaveLength(3);
+  expect(context.failedImports).toHaveLength(2);
 });
 
 test('GeoJSON and YOLO with missing or generic MIME types use the annotation role', async () => {
@@ -296,23 +328,94 @@ test('incompatible reinterpretation keeps the chosen role and document, with an 
   expect(context.getHistoryError(id)).toBeUndefined();
 });
 
-test('a failed inferred mask remains in history and can be corrected to an image', async () => {
+test('a failed inferred mask can be corrected without rereading and commits one undoable import', async () => {
   const context = documentWithOverlays();
+  const originalHistory = [...context.history];
   decode.mockResolvedValue({ imageData: image(50) });
   await context.importFiles([rasterFile]);
-  const id = context.history.at(-1)!.timestamp;
+  const id = context.failedImports[0].timestamp;
   expect(context.getImportRole(id)).toBe('mask');
   expect(context.getHistoryError(id)).toContain('50×50');
   expect(context.imageFileName).toBe('base.png');
+  expect(context.history).toEqual(originalHistory);
 
   context.changeImportRole(id, 'image');
   expect(context.imageFileName).toBe('mask.png');
   expect(context.imageData?.width).toBe(50);
   expect(context.getHistoryError(id)).toBeUndefined();
   expect(context.importErrors).toEqual([]);
+  expect(context.failedImports).toEqual([]);
+  expect(context.history).toHaveLength(originalHistory.length + 1);
+  expect(context.history.at(-1)?.type).toBe('import');
+  expect(context.getImportRole(context.history.at(-1)!.timestamp)).toBe('image');
+  expect(decode).toHaveBeenCalledOnce();
   context.undo();
   expect(context.imageFileName).toBe('base.png');
-  expect(context.getHistoryError(id)).toContain('50×50');
+  expect(context.annotationFiles[0].name).toBe('existing.txt');
+  context.redo();
+  expect(context.imageFileName).toBe('mask.png');
+  expect(context.imageData?.width).toBe(50);
+});
+
+test('only a successful correction of a failed import replaces the redo branch', async () => {
+  const context = documentWithOverlays();
+  context.setImage(image(200), 'B.png');
+  context.undo();
+  const history = [...context.history];
+  const historyIndex = context.historyIndex;
+  decode.mockResolvedValue({ imageData: image(50) });
+  await context.importFiles([rasterFile], 'mask');
+  const id = context.failedImports[0].timestamp;
+
+  context.changeImportRole(id, 'annotation');
+  expect(context.getHistoryError(id)).toContain('raster pixels');
+  expect(context.history).toEqual(history);
+  expect(context.historyIndex).toBe(historyIndex);
+  expect(context.failedImports).toHaveLength(1);
+  expect(context.getImportRole(id)).toBe('mask');
+
+  context.changeImportRole(id, 'image');
+  expect(context.failedImports).toEqual([]);
+  expect(context.history).toHaveLength(historyIndex + 2);
+  expect(context.history.some((entry) => entry.timestamp === history.at(-1)!.timestamp)).toBe(
+    false,
+  );
+  expect(context.imageFileName).toBe('mask.png');
+  context.undo();
+  expect(context.imageFileName).toBe('base.png');
+  context.redo();
+  expect(context.imageFileName).toBe('mask.png');
+  expect(decode).toHaveBeenCalledOnce();
+});
+
+test('failed imports validate retries against the current image and allow retrying the same role', async () => {
+  const context = createContext();
+  await context.importFiles([rasterFile], 'mask');
+  const id = context.failedImports[0].timestamp;
+  expect(context.getImportRoleError(id, 'mask')).toContain('Add an image');
+  context.setImage(image(50), 'small.png');
+  expect(context.getImportRoleError(id, 'mask')).toContain('100×100');
+  context.setImage(image(100), 'matching.png');
+  expect(context.getImportRoleError(id, 'mask')).toBeUndefined();
+
+  context.changeImportRole(id, 'mask');
+  expect(context.failedImports).toEqual([]);
+  expect(context.maskData?.width).toBe(100);
+  expect(context.history).toHaveLength(3);
+  expect(decode).toHaveBeenCalledOnce();
+});
+
+test('clearing history releases failed decoded imports and their errors', async () => {
+  const context = createContext();
+  await context.importFiles([rasterFile], 'mask');
+  const id = context.failedImports[0].timestamp;
+  context.changeImportRole(id, 'annotation');
+  context.clearHistory();
+
+  expect(context.failedImports).toEqual([]);
+  expect(context.history).toEqual([]);
+  expect(context.getHistoryError(id)).toBeUndefined();
+  expect(context.getImportRole(id)).toBeUndefined();
 });
 
 test('annotation files infer their role and explain incompatible image interpretations', async () => {

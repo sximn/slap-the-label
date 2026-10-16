@@ -269,7 +269,9 @@ test('mismatched masks preserve the document; float masks retain continuous samp
   expect(context.imageFileName).toBe('base.png');
   expect(context.maskData?.raster?.bands[0]).toBeInstanceOf(Float32Array);
   expect(context.maskData?.preview?.mode).toBe('continuous');
-  expect(context.history).toHaveLength(3);
+  expect(context.history).toHaveLength(2);
+  expect(context.failedImports).toHaveLength(1);
+  expect(context.failedImports[0].error).toContain('dimensions');
 });
 
 test('reinterpreting an import cannot resurrect its previous mask through a later preview step', async () => {

@@ -134,9 +134,12 @@ test('the bundled GeoJSON preserves nested classes and unclassified polygons', a
   expect(annotations.filter((annotation) => annotation.class === 'nuclei')).toHaveLength(767);
   const unclassified = annotations.filter((annotation) => annotation.class === undefined);
   expect(unclassified).toHaveLength(50);
-  expect(unclassified.every((annotation) => annotation.properties?.classification === null)).toBe(
-    true,
-  );
+  expect(
+    unclassified.every(
+      (annotation) =>
+        annotation.type === 'polygon' && annotation.properties?.classification === null,
+    ),
+  ).toBe(true);
   expect(context.getClassColor(annotations[0].class!)).toBeTruthy();
 });
 

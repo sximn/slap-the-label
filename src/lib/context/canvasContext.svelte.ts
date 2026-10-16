@@ -37,6 +37,13 @@ export type HistoryEntry = HistoryActionPayload & {
   timestamp: number;
 };
 
+export interface FailedImportAttempt {
+  source: ImportedSource;
+  role: ImportRole;
+  error: string;
+  timestamp: number;
+}
+
 export function createCanvasContext() {
   let imageData = $state<ImageData | null>(null);
   let imageFileName = $state<string>('');
@@ -57,10 +64,15 @@ export function createCanvasContext() {
   let historyIndex = $state<number>(-1);
   let historyBaseline = captureDocument();
   let importErrors = $state<string[]>([]);
+  let failedImports = $state<FailedImportAttempt[]>([]);
   let isImporting = $state(false);
   let historyErrors = $state<Record<number, string>>({});
   let roleErrors = $state<Record<number, string>>({});
   let lastTimestamp = 0;
+
+  function nextTimestamp() {
+    return (lastTimestamp = Math.max(Date.now(), lastTimestamp + 1));
+  }
 
   function cloneAnnotationFiles(files: AnnotationFile[]) {
     return structuredClone($state.snapshot(files));
@@ -200,6 +212,16 @@ export function createCanvasContext() {
   }
 
   function getImportRoleError(importId: number, role: ImportRole): string | undefined {
+    const attempt = failedImports.find((item) => item.timestamp === importId);
+    if (attempt) {
+      if (isImporting) return 'Wait for the current import to finish.';
+      try {
+        getImportTransition(attempt.source, role, imageData);
+      } catch (reason) {
+        return reason instanceof Error ? reason.message : String(reason);
+      }
+      return;
+    }
     const index = history.findIndex((entry) => entry.timestamp === importId);
     const entry = history[index];
     if (entry?.type !== 'import') return 'This history step is not an import.';
@@ -244,6 +266,9 @@ export function createCanvasContext() {
     get importErrors() {
       return importErrors;
     },
+    get failedImports() {
+      return failedImports;
+    },
     get isImporting() {
       return isImporting;
     },
@@ -269,20 +294,45 @@ export function createCanvasContext() {
       }
     },
     addImport(source: ImportedSource, role: ImportRole): string | undefined {
-      const entry = this.addToHistory('import', source.name, { source, role });
-      return historyErrors[entry.timestamp];
+      try {
+        this.addToHistory('import', source.name, { source, role });
+      } catch (reason) {
+        const error = reason instanceof Error ? reason.message : String(reason);
+        // Retain the decoded source for correction without forking document history.
+        failedImports.push({ source, role, error, timestamp: nextTimestamp() });
+        return error;
+      }
     },
     getImportRole(importId: number): ImportRole | undefined {
+      const attempt = failedImports.find((item) => item.timestamp === importId);
+      if (attempt) return attempt.role;
       const entry = history.find((item) => item.timestamp === importId);
       return entry?.type === 'import'
         ? (roleOverrides().get(importId) ?? entry.payload.role)
         : undefined;
     },
     getHistoryError(id: number): string | undefined {
-      return roleErrors[id] ?? historyErrors[id];
+      return (
+        roleErrors[id] ??
+        historyErrors[id] ??
+        failedImports.find((attempt) => attempt.timestamp === id)?.error
+      );
     },
     getImportRoleError,
     changeImportRole(importId: number, role: ImportRole) {
+      const attempt = failedImports.find((item) => item.timestamp === importId);
+      if (attempt) {
+        const error = getImportRoleError(importId, role);
+        if (error) {
+          roleErrors[importId] = error;
+          return;
+        }
+        this.addToHistory('import', attempt.source.name, { source: attempt.source, role });
+        failedImports = failedImports.filter((item) => item.timestamp !== importId);
+        delete roleErrors[importId];
+        importErrors = [];
+        return;
+      }
       const index = history.findIndex((entry) => entry.timestamp === importId);
       const entry = history[index];
       if (entry?.type !== 'import') return;
@@ -334,17 +384,22 @@ export function createCanvasContext() {
         ? [payload?: never]
         : [payload: Extract<HistoryActionPayload, { type: K }>['payload']]
     ) {
-      // remove any future history if we are in the middle of the stack
-      if (historyIndex < history.length - 1) {
-        history = history.slice(0, historyIndex + 1);
-      }
-
       const entry = {
         type,
         label,
         payload: args[0],
-        timestamp: (lastTimestamp = Math.max(Date.now(), lastTimestamp + 1)),
+        timestamp: nextTimestamp(),
       } as HistoryEntry;
+
+      // Validate new imports before committing or discarding a valid redo branch.
+      if (entry.type === 'import') {
+        getImportTransition(entry.payload.source, entry.payload.role, imageData);
+      }
+
+      // remove any future history if we are in the middle of the stack
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
 
       history.push(entry);
       historyIndex = history.length - 1;
@@ -468,6 +523,7 @@ export function createCanvasContext() {
       historyIndex = -1;
       historyErrors = {};
       roleErrors = {};
+      failedImports = [];
     },
 
     reorderHistory(newHistory: HistoryEntry[]) {
