@@ -137,6 +137,7 @@
         <ImportRolePopover
           importId={historyEntry.timestamp}
           name={historyEntry.payload.source.name}
+          {isActive}
           icon={Icon}
           disabled={isDragging}
         />

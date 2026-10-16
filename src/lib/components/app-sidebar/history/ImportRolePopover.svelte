@@ -9,11 +9,13 @@
   let {
     importId,
     name,
+    isActive,
     icon: Icon,
     disabled = false,
   }: {
     importId: number;
     name: string;
+    isActive: boolean;
     icon: typeof IconType;
     disabled?: boolean;
   } = $props();
@@ -62,13 +64,8 @@
         {...props}
         variant="ghost"
         size="icon-sm"
-        class={`size-7 text-muted-foreground hover:text-foreground data-[state=open]:bg-accent ${error ? 'text-destructive' : ''}`}
+        class={`size-7 border ${isActive ? 'border-muted/40' : 'border-muted'} text-muted-foreground hover:border-muted/50 hover:bg-muted hover:text-foreground data-[state=open]:bg-accent ${error ? 'text-destructive' : ''}`}
         aria-label={`Change interpretation of ${name} (currently ${role})`}
-        title={`Interpret as ${role}`}
-        onpointerdown={(event) => event.stopPropagation()}
-        onkeydown={(event) => {
-          if ([' ', 'Enter', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation();
-        }}
       >
         <Icon class="size-4" />
       </Button>
@@ -83,6 +80,7 @@
       class="z-50 w-48 rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none"
     >
       <p class="px-2 py-1.5 text-xs font-medium text-muted-foreground">Interpret as</p>
+
       {#each options as option (option.value)}
         <Tooltip.Trigger tether={reasons} payload={{ reason: option.reason ?? '' }}>
           {#snippet child({ props })}
@@ -101,13 +99,16 @@
             </Button>
           {/snippet}
         </Tooltip.Trigger>
+
         {#if option.reason}
           <span id={`${reasonId}-${option.value}`} class="sr-only">{option.reason}</span>
         {/if}
       {/each}
+
       {#if error}
         <p class="px-2 py-1.5 text-xs text-destructive" role="alert">{error}</p>
       {/if}
+
       <Tooltip.Root tether={reasons} disabled={!open}>
         {#snippet children({ payload })}
           {#if payload?.reason}
