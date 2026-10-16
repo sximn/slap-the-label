@@ -40,6 +40,37 @@ function assertCleanImage(context: CanvasContext, name: string, width: number) {
   expect(context.drawSettings).toEqual({ lineWidth: 2, showLabels: true });
 }
 
+test('class color lookup is deterministic without mutating reactive state during rendering', () => {
+  const context = createContext();
+  loadAnnotatedImage(context);
+  context.setDisplaySettings({ colorMode: 'class' });
+  const colorsBefore = new Map(context.classColors);
+
+  const color = context.getClassColor('object');
+  expect(color).toMatch(/^hsl\([\d.]+, 70%, 50%\)$/);
+  expect(context.getClassColor('object')).toBe(color);
+  expect(createContext().getClassColor('object')).toBe(color);
+  expect(new Map(context.classColors)).toEqual(colorsBefore);
+
+  context.clearAll();
+  context.undo();
+  expect(context.getClassColor('object')).toBe(color);
+  expect(context.classColors.size).toBe(0);
+});
+
+test('class color lookup honors explicit overrides without storing other fallback colors', () => {
+  const context = createContext();
+  context.getClassColor('object');
+  context.setClassColor('object', '#123456');
+
+  expect(context.getClassColor('object')).toBe('#123456');
+  context.getClassColor('other');
+  expect([...context.classColors]).toEqual([['object', '#123456']]);
+
+  context.setClassColor('object', '#abcdef');
+  expect(context.getClassColor('object')).toBe('#abcdef');
+});
+
 test('image replacement is one undoable operation that clears overlays on every redo', () => {
   const context = createContext();
   loadAnnotatedImage(context);

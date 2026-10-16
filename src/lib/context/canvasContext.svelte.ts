@@ -434,13 +434,15 @@ export function createCanvasContext() {
     },
 
     getClassColor(className: string): string {
-      if (!classColors.has(className)) {
-        // generate a random color or consistent hash color for new classes
-        const hash = className.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
-        const hue = (hash * 137.5) % 360;
-        classColors.set(className, `hsl(${hue}, 70%, 50%)`);
+      const override = classColors.get(className);
+      if (override !== undefined) {
+        return override;
       }
-      return classColors.get(className)!;
+
+      // rendering calls this lookup, so fallback colors must not mutate reactive state
+      const hash = className.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
+      const hue = (hash * 137.5) % 360;
+      return `hsl(${hue}, 70%, 50%)`;
     },
 
     setClassColor(className: string, color: string) {
