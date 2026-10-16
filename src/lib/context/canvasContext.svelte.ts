@@ -1,5 +1,6 @@
 import { setContext, getContext } from 'svelte';
 import type { DrawSettings, ImageData, AnnotationFile, DisplaySettings } from '$lib/types';
+import { SvelteMap } from 'svelte/reactivity';
 
 const CONTEXT_KEY = Symbol('CANVAS');
 
@@ -26,7 +27,7 @@ export function createCanvasContext() {
 
   let maskData = $state<ImageData | null>(null);
   let annotationFiles = $state<AnnotationFile[]>([]);
-  let classColors = $state<Map<string, string>>(new Map());
+  let classColors: Map<string, string> = new SvelteMap();
 
   let stageSettings = $state<{ zoomX: number; zoomY: number }>({ zoomX: 1, zoomY: 1 });
   let drawSettings = $state<DrawSettings>({ lineWidth: 2, showLabels: true });
