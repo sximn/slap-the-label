@@ -6,14 +6,14 @@ interface GeoJSONFeature {
     type: 'Polygon' | 'MultiPolygon';
     coordinates: number[][][] | number[][][][];
   };
-  properties?: Record<string, any>;
+  properties?: unknown;
 }
 
 interface GeoJSON {
   type: 'FeatureCollection' | 'Feature';
   features?: GeoJSONFeature[];
   geometry?: GeoJSONFeature['geometry'];
-  properties?: Record<string, any>;
+  properties?: unknown;
 }
 
 export async function readGeoJsonFile(
@@ -48,11 +48,14 @@ export function parseGeoJSON(geojsonText: string, sourceFile: string): PolygonAn
     if (!feature.geometry) continue;
 
     const { type, coordinates } = feature.geometry;
+    const properties = isRecord(feature.properties) ? feature.properties : undefined;
+    const classification = properties?.classification;
+    // keep top-level class/name/label precedence; nested classification is a fallback
     const className =
-      (feature.properties?.class as string) ||
-      (feature.properties?.name as string) ||
-      (feature.properties?.label as string) ||
-      undefined;
+      normalizeClassIdentifier(properties?.class) ??
+      normalizeClassIdentifier(properties?.name) ??
+      normalizeClassIdentifier(properties?.label) ??
+      normalizeClassIdentifier(isRecord(classification) ? classification.name : undefined);
 
     if (type === 'Polygon') {
       // coordinates is number[][][]
@@ -65,7 +68,7 @@ export function parseGeoJSON(geojsonText: string, sourceFile: string): PolygonAn
         type: 'polygon',
         class: className,
         points,
-        properties: feature.properties,
+        properties,
         sourceFile,
       });
     } else if (type === 'MultiPolygon') {
@@ -81,7 +84,7 @@ export function parseGeoJSON(geojsonText: string, sourceFile: string): PolygonAn
           type: 'polygon',
           class: className,
           points,
-          properties: feature.properties,
+          properties,
           sourceFile,
         });
       }
@@ -89,6 +92,22 @@ export function parseGeoJSON(geojsonText: string, sourceFile: string): PolygonAn
   }
 
   return annotations;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeClassIdentifier(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value.trim() || undefined;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
 }
 
 function readCoordinates(ring: number[][]): number[] {
