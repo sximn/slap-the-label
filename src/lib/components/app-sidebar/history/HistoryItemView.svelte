@@ -50,6 +50,7 @@
     mask: ScanFace,
     annotation: FilePlus,
     visibility: Eye,
+    coordinates: ScanFace,
     clear: Eraser,
     default: Circle,
   };

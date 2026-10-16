@@ -1,27 +1,7 @@
 import { expect, test } from 'vitest';
-import { render } from 'svelte/server';
 import type { CanvasContext } from '$lib/context/canvasContext.svelte';
-import type { AnnotationFile, ImageData } from '$lib/types';
-import CanvasContextFixture from './fixtures/CanvasContext.svelte';
-
-function createContext(): CanvasContext {
-  let context: CanvasContext | undefined;
-  // accessing body forces Svelte's lazy server render to initialize the component
-  render(CanvasContextFixture, { props: { capture: (value) => (context = value) } }).body;
-
-  if (!context) {
-    throw new Error('Canvas context was not initialized');
-  }
-
-  return context;
-}
-
-const image = (width: number): ImageData => ({
-  width,
-  height: width,
-  // these state tests never draw the canvas
-  canvasElement: {} as HTMLCanvasElement,
-});
+import type { AnnotationFile } from '$lib/types';
+import { createContext, image } from './helpers/canvasContext';
 
 const labels: AnnotationFile = {
   name: 'labels.txt',
@@ -149,5 +129,88 @@ test('annotation visibility, removal, and clear use the same transitions during 
   context.redo();
   expect(context.imageData).toBe(null);
   expect(context.maskData).toBe(null);
+  expect(context.annotationFiles).toEqual([]);
+});
+
+test('clearing history adopts the complete current document as the undo baseline', () => {
+  const context = createContext();
+  loadAnnotatedImage(context);
+  context.setClassColor('object', '#123456');
+  context.setLineWidth(7);
+  context.setShowLabels(false);
+  context.clearHistory();
+
+  expect(context.history).toEqual([]);
+  expect(context.historyIndex).toBe(-1);
+  assertImageA(context);
+  context.undo();
+  context.redo();
+  assertImageA(context);
+
+  for (let i = 0; i < 3; i++) {
+    context.clearAll();
+    expect(context.imageData).toBeNull();
+    context.undo();
+    assertImageA(context);
+    expect(context.classColors.get('object')).toBe('#123456');
+    expect(context.drawSettings).toEqual({ lineWidth: 7, showLabels: false });
+    context.redo();
+    expect(context.imageData).toBeNull();
+    context.undo();
+  }
+});
+
+test('baseline layers remain immutable across visibility changes and direct mutations', () => {
+  const context = createContext();
+  loadAnnotatedImage(context);
+  context.clearHistory();
+  context.toggleAnnotationFile(labels.name);
+  expect(context.annotationFiles[0].visible).toBe(false);
+  context.undo();
+  assertImageA(context);
+
+  context.annotationFiles[0].color = '#abcdef';
+  const polygon = context.annotationFiles[1].annotations[0];
+  if (polygon.type === 'polygon') polygon.points[0] = 42;
+  context.removeAnnotationFile(labels.name);
+  context.jumpTo(-1);
+  assertImageA(context);
+
+  // Restoring the baseline must also create fresh copies on every replay.
+  context.toggleAnnotationFile(labels.name);
+  context.undo();
+  assertImageA(context);
+});
+
+test('clearing history after undo discards the future and preserves the visible document', () => {
+  const context = createContext();
+  loadAnnotatedImage(context);
+  context.setImage(image(200), 'B.png');
+  context.undo();
+  context.clearHistory();
+  context.redo();
+  assertImageA(context);
+
+  context.setImage(image(300), 'C.png');
+  context.undo();
+  assertImageA(context);
+  context.redo();
+  assertCleanImage(context, 'C.png', 300);
+  context.clearHistory();
+  context.clearAll();
+  context.undo();
+  assertCleanImage(context, 'C.png', 300);
+});
+
+test('clearing history on an empty pane establishes an empty baseline', () => {
+  const context = createContext();
+  loadAnnotatedImage(context);
+  context.clearAll();
+  context.clearHistory();
+  context.setImage(image(200), 'B.png');
+  context.undo();
+  expect(context.imageData).toBeNull();
+  expect(context.imageFileName).toBe('');
+  expect(context.maskData).toBeNull();
   expect(context.annotationFiles).toEqual([]);
 });

@@ -18,11 +18,15 @@ export interface PolygonAnnotation {
 
 export type Annotation = BBoxAnnotation | PolygonAnnotation;
 
+export type ImageCoordinateSpace = 'pixel' | 'normalized';
+
 export interface AnnotationFile {
   name: string;
   annotations: Annotation[];
   visible: boolean;
   color: string; // distinct color per file
+  // omitted for existing YOLO layers, which use normalized image coordinates
+  coordinateSpace?: ImageCoordinateSpace;
 }
 
 export interface ImageData {

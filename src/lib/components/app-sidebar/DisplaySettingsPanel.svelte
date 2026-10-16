@@ -7,6 +7,7 @@
   import { Separator } from '$lib/components/ui/separator';
   import { Eye, EyeOff } from '@lucide/svelte';
   import { isMaskVisualizationType } from '$lib/types';
+  import { isImageCoordinateSpace } from '$lib/utils/coordinates';
 
   const ctx = getCanvasContext();
 
@@ -144,6 +145,39 @@
   </div>
 
   <Separator />
+
+  {#if ctx.annotationFiles.some((file) => file.coordinateSpace)}
+    <div class="space-y-4">
+      <h3 class="text-sm font-medium tracking-wide text-foreground/70 uppercase">
+        GeoJSON coordinates
+      </h3>
+      {#each ctx.annotationFiles as file}
+        {#if file.coordinateSpace}
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="truncate" title={file.name}>{file.name}</span>
+            <select
+              class="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              aria-label={`Coordinate space for ${file.name}`}
+              value={file.coordinateSpace}
+              onchange={(event) => {
+                const value = event.currentTarget.value;
+                if (isImageCoordinateSpace(value)) {
+                  ctx.setAnnotationCoordinateSpace(file.name, value);
+                }
+              }}
+            >
+              <option value="pixel">Image pixels</option>
+              <option value="normalized">Normalized image coordinates (0–1)</option>
+            </select>
+          </label>
+        {/if}
+      {/each}
+      <p class="text-xs text-muted-foreground">
+        Geographic coordinates must be converted to image coordinates before import.
+      </p>
+    </div>
+    <Separator />
+  {/if}
 
   <div class="space-y-4">
     <h3 class="text-sm font-medium tracking-wide text-foreground/70 uppercase">Masks</h3>

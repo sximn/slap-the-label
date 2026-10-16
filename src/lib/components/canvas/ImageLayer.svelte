@@ -3,6 +3,7 @@
   import { Layer, Image, Group } from 'svelte-konva';
   import AnnotationRect from './AnnotationRect.svelte';
   import AnnotationPolygon from './AnnotationPolygon.svelte';
+  import { getImageCoordinateScale } from '$lib/utils/coordinates';
 
   let {
     image,
@@ -42,6 +43,11 @@
   </Group>
 
   {#each ctx.annotationFiles as annotationFile}
+    {@const layerScale = getImageCoordinateScale(
+      annotationFile.coordinateSpace ?? 'normalized',
+      scaleX,
+      scaleY,
+    )}
     {#if annotationFile.visible}
       <Group>
         {#each annotationFile.annotations as annotation}
@@ -55,16 +61,14 @@
           {#if annotation.type === 'bbox'}
             <AnnotationRect
               box={annotation}
-              {scaleX}
-              {scaleY}
+              {...layerScale}
               showLabels={ctx.drawSettings.showLabels}
               {color}
             />
           {:else if annotation.type === 'polygon'}
             <AnnotationPolygon
               polygon={annotation}
-              {scaleX}
-              {scaleY}
+              {...layerScale}
               showLabels={ctx.drawSettings.showLabels}
               {color}
             />

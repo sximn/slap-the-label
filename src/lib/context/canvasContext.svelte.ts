@@ -1,5 +1,11 @@
 import { setContext, getContext } from 'svelte';
-import type { DrawSettings, ImageData, AnnotationFile, DisplaySettings } from '$lib/types';
+import type {
+  DrawSettings,
+  ImageData,
+  AnnotationFile,
+  DisplaySettings,
+  ImageCoordinateSpace,
+} from '$lib/types';
 import { SvelteMap } from 'svelte/reactivity';
 
 const CONTEXT_KEY = Symbol('CANVAS');
@@ -12,6 +18,7 @@ export type HistoryActionPayload =
       payload: { action: 'add'; file: AnnotationFile } | { action: 'remove'; name: string };
     }
   | { type: 'visibility'; payload: { name: string; visible: boolean } }
+  | { type: 'coordinates'; payload: { name: string; coordinateSpace: ImageCoordinateSpace } }
   | { type: 'clear'; payload?: never };
 
 export type HistoryActionType = HistoryActionPayload['type'];
@@ -39,18 +46,41 @@ export function createCanvasContext() {
 
   let history = $state<HistoryEntry[]>([]);
   let historyIndex = $state<number>(-1);
+  let historyBaseline = captureDocument();
 
-  function resetDocument(resetDrawSettings = true) {
+  function cloneAnnotationFiles(files: AnnotationFile[]) {
+    return structuredClone($state.snapshot(files));
+  }
+
+  function captureDocument() {
+    return {
+      imageData,
+      imageFileName,
+      maskData,
+      annotationFiles: cloneAnnotationFiles(annotationFiles),
+      classColors: new Map(classColors),
+      drawSettings: { ...drawSettings },
+    };
+  }
+
+  function restoreBaseline() {
+    imageData = historyBaseline.imageData;
+    imageFileName = historyBaseline.imageFileName;
+    maskData = historyBaseline.maskData;
+    annotationFiles = cloneAnnotationFiles(historyBaseline.annotationFiles);
+    classColors = new SvelteMap(historyBaseline.classColors);
+    Object.assign(drawSettings, historyBaseline.drawSettings);
+  }
+
+  function resetDocument() {
     imageData = null;
     imageFileName = '';
     maskData = null;
     annotationFiles = [];
     classColors = new SvelteMap();
 
-    if (resetDrawSettings) {
-      drawSettings.lineWidth = 2;
-      drawSettings.showLabels = true;
-    }
+    drawSettings.lineWidth = 2;
+    drawSettings.showLabels = true;
   }
 
   function applyAction(action: HistoryActionPayload) {
@@ -88,11 +118,17 @@ export function createCanvasContext() {
       case 'clear':
         resetDocument();
         break;
+
+      case 'coordinates': {
+        const file = annotationFiles.find((f) => f.name === action.payload.name);
+        if (file) file.coordinateSpace = action.payload.coordinateSpace;
+        break;
+      }
     }
   }
 
   function recomputeState() {
-    resetDocument(false);
+    restoreBaseline();
 
     for (let i = 0; i <= historyIndex; i++) {
       const entry = history[i];
@@ -195,6 +231,15 @@ export function createCanvasContext() {
       this.addToHistory('annotation', `Remove ${fileName}`, { action: 'remove', name: fileName });
     },
 
+    setAnnotationCoordinateSpace(fileName: string, coordinateSpace: ImageCoordinateSpace) {
+      const file = annotationFiles.find((f) => f.name === fileName);
+      if (!file || file.coordinateSpace === coordinateSpace) return;
+      this.addToHistory('coordinates', `Use ${coordinateSpace} coordinates for ${fileName}`, {
+        name: fileName,
+        coordinateSpace,
+      });
+    },
+
     setImage(data: ImageData, name: string) {
       this.addToHistory('image', 'Load Image', { data, name });
     },
@@ -242,6 +287,8 @@ export function createCanvasContext() {
     },
 
     clearHistory() {
+      // Keep the visible document as the starting point for all future replay.
+      historyBaseline = captureDocument();
       history = [];
       historyIndex = -1;
     },
