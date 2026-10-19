@@ -16,6 +16,7 @@
   let stageRef: ReturnType<typeof Stage> | undefined = $state();
   let layerRef: ReturnType<typeof ImageLayer> | undefined = $state();
   let isDraggingOver = $state(false);
+  let fittedImageId: string | null = null;
 
   const { w: width, h: height } = $derived(contentPaneCtx);
 
@@ -34,7 +35,10 @@
     if (files.length) await canvasCtx.importFiles(files);
   }
   function resetStageZoom(imgWidth: number, imgHeight: number) {
-    if (!stageRef) return;
+    if (!stageRef) {
+      return false;
+    }
+
     const stage = stageRef.node;
 
     const paneWidth = contentPaneCtx.w;
@@ -45,6 +49,9 @@
 
     const availableWidth = paneWidth - TOTAL_INIT_PANE_IMG_MARGIN;
     const availableHeight = paneHeight - TOTAL_INIT_PANE_IMG_MARGIN;
+    if (availableWidth <= 0 || availableHeight <= 0 || imgWidth <= 0 || imgHeight <= 0) {
+      return false;
+    }
 
     let newScale = 1;
 
@@ -70,6 +77,7 @@
 
     stage.batchDraw();
     layerRef?.resetLayerOffset();
+    return true;
   }
 
   watchOnce(
@@ -121,10 +129,27 @@
   );
 
   watch(
-    () => canvasCtx.imageData,
-    () => {
-      if (canvasCtx.imageData?.canvasElement) {
-        resetStageZoom(canvasCtx.imageData.width, canvasCtx.imageData.height);
+    [
+      () => canvasCtx.imageId,
+      () => stageRef,
+      () => layerRef,
+      () => contentPaneCtx.w,
+      () => contentPaneCtx.h,
+    ],
+    ([imageId]) => {
+      if (!imageId) {
+        fittedImageId = null;
+        return;
+      }
+
+      // preview canvases can change without changing the active image
+      // here we wait for the stage, layer, and pane dimensions before fitting a new image
+      if (imageId === fittedImageId || !stageRef || !layerRef || !canvasCtx.imageData) {
+        return;
+      }
+
+      if (resetStageZoom(canvasCtx.imageData.width, canvasCtx.imageData.height)) {
+        fittedImageId = imageId;
       }
     },
   );

@@ -20,7 +20,7 @@ const CONTEXT_KEY = Symbol('CANVAS');
 export type HistoryActionPayload =
   | { type: 'import'; payload: { source: ImportedSource; role: ImportRole; layerId: string } }
   | { type: 'import-role'; payload: { importId: number; role: ImportRole } }
-  | { type: 'image'; payload: { data: ImageData; name: string } }
+  | { type: 'image'; payload: { data: ImageData; name: string; imageId: string } }
   | { type: 'mask'; payload: { data: ImageData } }
   | { type: 'raster-preview'; payload: { target: RasterTarget; data: ImageData } }
   | {
@@ -49,6 +49,7 @@ export interface FailedImportAttempt {
 
 export function createCanvasContext() {
   let imageData = $state<ImageData | null>(null);
+  let imageId = $state<string | null>(null);
   let imageFileName = $state<string>('');
 
   let maskData = $state<ImageData | null>(null);
@@ -84,6 +85,7 @@ export function createCanvasContext() {
   function captureDocument() {
     return {
       imageData,
+      imageId,
       imageFileName,
       maskData,
       annotationFiles: cloneAnnotationFiles(annotationFiles),
@@ -94,6 +96,7 @@ export function createCanvasContext() {
 
   function restoreDocument(document: ReturnType<typeof captureDocument>) {
     imageData = document.imageData;
+    imageId = document.imageId;
     imageFileName = document.imageFileName;
     maskData = document.maskData;
     annotationFiles = cloneAnnotationFiles(document.annotationFiles);
@@ -103,6 +106,7 @@ export function createCanvasContext() {
 
   function resetDocument() {
     imageData = null;
+    imageId = null;
     imageFileName = '';
     maskData = null;
     annotationFiles = [];
@@ -127,6 +131,11 @@ export function createCanvasContext() {
         );
         if (transition.type === 'annotation') {
           appendAnnotationLayer(transition.payload.file, action.payload.layerId);
+        } else if (transition.type === 'image') {
+          applyAction({
+            ...transition,
+            payload: { ...transition.payload, imageId: action.payload.layerId },
+          });
         } else {
           applyAction(transition);
         }
@@ -138,6 +147,7 @@ export function createCanvasContext() {
       case 'image':
         resetDocument();
         imageData = action.payload.data;
+        imageId = action.payload.imageId;
         imageFileName = action.payload.name;
         break;
 
@@ -374,6 +384,9 @@ export function createCanvasContext() {
     get imageData() {
       return imageData;
     },
+    get imageId() {
+      return imageId;
+    },
     get imageFileName() {
       return imageFileName;
     },
@@ -487,7 +500,7 @@ export function createCanvasContext() {
     },
 
     setImage(data: ImageData, name: string) {
-      this.addToHistory('image', 'Load Image', { data, name });
+      this.addToHistory('image', 'Load Image', { data, name, imageId: crypto.randomUUID() });
     },
 
     setMask(data: ImageData) {
